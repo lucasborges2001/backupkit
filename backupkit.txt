@@ -1,0 +1,458 @@
+BACKUPKIT
+Marco de trabajo para backups, restore test y validación operativa reutilizable entre proyectos
+
+Objetivo
+
+Construir un módulo reutilizable, externo al proyecto, que permita ejecutar backups de forma consistente y auditable.
+No se busca un script suelto por proyecto ni un wrapper débil que solo haga dumps.
+Se busca un runner reutilizable que cubra:
+
+- prechecks
+- ejecución del backup
+- validación del artefacto generado
+- restore test
+- validaciones post-restore
+- retención
+- notificación
+- registro de resultado
+
+La idea es que cada proyecto consuma backupkit y declare su política, en vez de reimplementar lógica de backup adentro del repo.
+
+Idea central
+
+No queremos:
+
+“cada proyecto arma su script y decide libremente qué saltear”
+
+Queremos:
+
+“cada proyecto declara una policy y backupkit la ejecuta dentro de un contrato fuerte”
+
+Eso significa que backupkit debe ser genérico en el motor, pero no ambiguo en la ejecución.
+
+Responsabilidad de backupkit
+
+Backupkit debe resolver de forma reutilizable:
+
+1. Prechecks
+- conectividad al recurso
+- credenciales válidas
+- espacio libre
+- carpeta destino disponible
+- lock de ejecución para evitar doble corrida
+- validación de configuración mínima
+
+2. Ejecución
+- export / dump según adapter
+- compresión
+- hash
+- naming consistente del artefacto
+- log estructurado de la corrida
+
+3. Verificación del artefacto
+- archivo existe
+- archivo no vacío
+- tamaño mínimo
+- compresión válida
+- hash generado
+- lectura básica del contenido cuando aplique
+
+4. Restore test
+- restauración en recurso temporal cuando el motor lo permita
+- verificación de import exitosa
+- limpieza posterior del entorno temporal
+
+5. Validaciones
+- validaciones genéricas
+- validaciones específicas del proyecto
+- chequeo de estructura
+- chequeo de presencia de recursos críticos
+- queries / invariantes definidas por el proyecto
+
+6. Retención
+- rotación de artefactos
+- políticas por diarios / semanales / mensuales si se desea
+- borrado seguro según policy
+
+7. Reporte
+- estado final OK / WARN / ERROR
+- etapa de falla
+- métricas básicas
+- salida legible para consola, log y notificador
+
+8. Notificación
+- Telegram como primer objetivo
+- posibilidad futura de mail/webhook
+
+Qué NO debe ser backupkit
+
+- No debe estar atado a Cargadores
+- No debe vivir dentro del runtime del proyecto
+- No debe depender de la app principal
+- No debe permitir apagar alegremente pasos críticos
+- No debe ser “solo mysqldump con un curl a Telegram”
+- No debe dejar toda la semántica en variables .env sin contrato
+
+Modelo propuesto
+
+Separar en dos capas:
+
+1. backupkit
+motor reusable
+
+2. proyecto consumidor
+declara configuración, policy y validaciones propias
+
+Eso replica el patrón que ya usamos con testkit:
+el toolkit es reusable y el proyecto lo consume mediante contrato y configuración.
+
+Estructura sugerida de backupkit
+
+backupkit/
+  bin/
+    backupkit
+  core/
+    runner/
+    config/
+    report/
+    retention/
+    locks/
+    artifact/
+  adapters/
+    mysql/
+    influx/
+    redis/
+  validators/
+    generic/
+    mysql/
+    influx/
+    redis/
+  notifiers/
+    telegram/
+  templates/
+    env/
+    policy/
+  docs/
+  examples/
+
+Estructura sugerida en un proyecto consumidor
+
+proyecto/
+  backup/
+    .env.backup
+    backup.policy.yml
+    validators/
+      mysql_orphans.sql
+      mysql_invariants.sql
+    README.md
+
+Contrato de configuración
+
+No conviene meter toda la política en .env.
+
+Separación recomendada:
+
+A. .env
+Para secretos y parámetros de entorno:
+- host
+- puertos
+- usuarios
+- passwords/tokens
+- paths
+- flags simples
+
+B. backup.policy.yml
+Para política operativa:
+- qué recursos se respaldan
+- estrategia por recurso
+- qué es crítico
+- qué se excluye
+- qué va schema-only
+- validaciones a correr
+- retención
+- notificaciones
+
+Razón
+
+.env parametriza.
+policy.yml modela decisiones.
+
+Si intentamos meter todo en .env, terminamos con una herramienta laxa y peligrosa.
+
+Pasos obligatorios del pipeline
+
+Estos pasos deberían ser innegociables para todos los proyectos:
+
+- precheck
+- ejecución con exit code real
+- generación de hash
+- verificación de archivo no vacío
+- reporte final uniforme
+- retención controlada
+
+Y además, cuando el motor lo soporte, también debería ser obligatorio:
+- restore test
+
+Puntos que no deberían poder apagarse sin una excepción explícita y justificada:
+- restore test en MySQL
+- validación mínima de estructura
+- chequeo de recursos críticos declarados
+- registro de resultado
+
+Adapters previstos
+
+1. MySQL
+Debe soportar:
+- backup full
+- backup schema-only
+- exclusión de tablas
+- restore test a base temporal
+- validación de tablas críticas
+- ejecución de queries SQL de validación
+
+2. Influx
+Debe soportar, al menos:
+- export o backup según estrategia elegida
+- metadata/config si el proyecto no requiere full histórico
+- chequeos básicos del artefacto
+- eventualmente restore test si se define luego
+
+3. Redis
+No es prioridad inicial, pero sería deseable dejar la interfaz prevista para:
+- snapshot/export
+- verificación mínima
+- uso opcional según proyecto
+
+Validadores
+
+Hay dos tipos:
+
+1. Genéricos
+Sirven para cualquier proyecto o cualquier recurso:
+- recurso accesible
+- artefacto generado
+- archivo no vacío
+- tamaño mínimo
+- compresión válida
+- hash presente
+- restore exitoso
+- presencia de tablas/listas críticas
+
+2. Específicos del proyecto
+Los aporta el proyecto consumidor.
+Ejemplos:
+- queries SQL de orfandad
+- invariantes de negocio
+- reglas mínimas de coherencia post-restore
+
+Backupkit no debe “adivinar” reglas del dominio.
+El consumidor debe versionarlas en su carpeta backup/validators.
+
+Notificación
+
+Primer notificador a implementar:
+- Telegram
+
+Mensajes mínimos:
+- OK
+- WARN
+- ERROR
+
+El mensaje debe incluir:
+- proyecto
+- recurso
+- fecha/hora
+- duración
+- tamaño
+- hash corto
+- resultado del restore test
+- warnings o etapa de falla
+
+Ejemplo de mensaje OK:
+
+✅ Backup OK
+Proyecto: cargadores
+Recurso: mysql/cargadores
+Fecha: 2026-03-23 02:00
+Duración: 41s
+Tamaño: 128 MB
+SHA256: ab12cd34...
+Restore: OK
+Warnings: 0
+
+Ejemplo de mensaje ERROR:
+
+❌ Backup ERROR
+Proyecto: cargadores
+Recurso: mysql/cargadores
+Etapa: restore
+Archivo: cargadores_2026-03-23_0200.sql.gz
+Motivo: import falló / validación crítica falló
+
+Retención
+
+Base mínima recomendada:
+- 7 diarios
+
+Más adelante podría extenderse a:
+- semanales
+- mensuales
+
+La retención debe quedar modelada en policy, no hardcodeada en el motor.
+
+Cómo usarlo desde un proyecto
+
+La idea es que el proyecto:
+
+1. incorpore backupkit como módulo/herramienta externa
+2. declare .env.backup
+3. declare backup.policy.yml
+4. agregue validators propios
+5. ejecute backupkit por CLI o runner programado
+
+Ejemplo conceptual:
+
+backupkit run --env ./backup/.env.backup --policy ./backup/backup.policy.yml
+
+No queremos que el proyecto “importe una librería y ejecute funciones sueltas” en cualquier parte del código de negocio.
+Queremos un proceso operativo desacoplado.
+
+Decisión importante: host vs contenedor
+
+Recomendación:
+backupkit debe correr fuera del runtime de la app.
+Idealmente en el host o en un contenedor separado de operación.
+
+No conviene meter la lógica dentro del contenedor principal del proyecto.
+El proyecto puede estar dockerizado, pero backupkit debe funcionar como herramienta de infraestructura.
+
+Qué aporta cada lado
+
+Backupkit aporta:
+- motor
+- adapters
+- pipeline
+- reporter
+- notifiers
+- validators genéricos
+- templates
+
+El proyecto aporta:
+- secretos y conexión
+- policy
+- clasificación de recursos
+- validators de negocio
+- scheduling externo si se desea
+
+Aplicación al proyecto Cargadores
+
+Para Cargadores, backupkit debería permitir modelar algo como:
+
+- MySQL: sí
+- backup full del núcleo relacional
+- logs pesados con estrategia separada o schema-only
+- restore test obligatorio
+- validaciones SQL post-restore
+- Telegram activo
+- Influx evaluable según criticidad real de los datos
+
+Núcleo relacional que, en principio, conviene tratar como full backup:
+- Usuario
+- Organizacion
+- UsuarioOrganizacion
+- Sitio
+- Cargador
+- Conector
+- SesionCarga
+- Cuenta
+- CuentaMovimiento
+- Contrato
+- Tarifa
+- TarifaDetalle
+
+Candidatas a estrategia separada o no central:
+- LogSistema
+- LogIncidente
+- alertas y tablas pesadas según policy
+
+Punto importante para Cargadores:
+backup de MySQL no equivale a backup total del sistema.
+Hay que dejar clara la diferencia entre:
+- datos relacionales críticos
+- estado vivo en Redis
+- históricos/series en Influx
+
+Por eso backupkit tiene que soportar múltiples recursos aunque el proyecto arranque solo por MySQL.
+
+MVP recomendado
+
+Primera versión de backupkit:
+
+1. CLI base
+2. lectura de .env + policy.yml
+3. adapter MySQL
+4. dump full
+5. schema-only por tabla
+6. exclusión de tablas
+7. gzip
+8. sha256
+9. restore test a base temporal
+10. ejecución de queries SQL de validación
+11. reporte final
+12. retención diaria simple
+13. Telegram
+
+Eso ya deja una versión útil y seria.
+
+No hace falta meter de entrada:
+- UI
+- panel web
+- demasiados motores
+- inferencia automática de criticidad
+- políticas complejas por horario
+
+Preguntas de diseño que deberían quedar cerradas
+
+1. ¿Habrá policy.yml además del .env?
+Respuesta propuesta: sí, obligatorio.
+
+2. ¿Qué pasos son innegociables?
+Respuesta propuesta:
+- precheck
+- hash
+- artefacto no vacío
+- restore test cuando aplique
+- reporte
+- retención
+
+3. ¿Dónde vive la semántica de negocio?
+Respuesta propuesta:
+en validators versionados por el proyecto consumidor.
+
+4. ¿Backupkit corre dentro del proyecto?
+Respuesta propuesta:
+no.
+Corre como herramienta operativa externa.
+
+5. ¿Backupkit intenta ser universal?
+Respuesta propuesta:
+no universal mágico.
+Reusable con adapters y policies.
+
+Resumen corto
+
+Backupkit no es “un script de backup”.
+Es un runner reusable de:
+
+- backup
+- restore validation
+- checks
+- retención
+- reporte
+- notificación
+
+El proyecto no debería “hacer lo que quiera” con el módulo.
+Debería declarar una policy dentro de un contrato fuerte.
+
+El objetivo no es solo generar backups.
+El objetivo es tener evidencia razonable de que el respaldo existe, es válido y puede restaurarse.

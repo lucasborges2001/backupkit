@@ -1,0 +1,60 @@
+{
+  "project": "cargadores",
+  "resource": "mysql-main",
+  "command": "precheck",
+  "started_at": "2026-03-23T12:49:21.387477+00:00",
+  "status": "ERROR",
+  "checks": [
+    {
+      "id": "core.config.required",
+      "status": "OK",
+      "severity": "blocking",
+      "message": "Required policy fields present",
+      "meta": {}
+    },
+    {
+      "id": "core.lock.available",
+      "status": "OK",
+      "severity": "blocking",
+      "message": "Lock acquired: var/locks/cargadores-mysql-main.lock",
+      "meta": {}
+    },
+    {
+      "id": "core.output_dir.writable",
+      "status": "OK",
+      "severity": "blocking",
+      "message": "Output dir writable: var/output",
+      "meta": {}
+    },
+    {
+      "id": "core.free_space",
+      "status": "OK",
+      "severity": "blocking",
+      "message": "Free space OK: 8796093022207 MB",
+      "meta": {
+        "free_mb": 8796093022207
+      }
+    },
+    {
+      "id": "core.tools.available",
+      "status": "ERROR",
+      "severity": "blocking",
+      "message": "Missing required tools: mysql_query_client, mysql_dump_client",
+      "meta": {}
+    },
+    {
+      "id": "adapter.mysql.connectivity",
+      "status": "ERROR",
+      "severity": "blocking",
+      "message": "MySQL not reachable at 127.0.0.1:3306: [Errno 111] Connection refused",
+      "meta": {}
+    },
+    {
+      "id": "notify.telegram",
+      "status": "WARN",
+      "severity": "warning",
+      "message": "telegram disabled: missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID",
+      "meta": {}
+    }
+  ]
+}
