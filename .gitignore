@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Local runtime/output
+var/output/*
+!var/output/.gitkeep
+
+var/locks/*
+!var/locks/.gitkeep
+
+.backupkit/
+tmp/
+temp/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+!.env.backup.example
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Archives
+*.zip

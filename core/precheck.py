@@ -12,7 +12,7 @@ from core.result import CheckResult, RunReport
 from core.tools import resolve_tool
 
 
-def required_paths_for_resource(resource_type: str):
+def required_paths_for_resource(resource_type: str, command: str):
     base = [
         "project.name",
         "resource.name",
@@ -20,7 +20,7 @@ def required_paths_for_resource(resource_type: str):
         "artifact.output_dir",
         "prechecks.require_free_space_mb",
     ]
-    if resource_type == "mysql":
+    if command in {"precheck", "backup"} and resource_type == "mysql":
         base += [
             "resource.connection.host",
             "resource.connection.port",
@@ -30,10 +30,13 @@ def required_paths_for_resource(resource_type: str):
     return base
 
 
-def validate_required_config(config: dict, report: RunReport):
+def validate_required_config(config: dict, report: RunReport, command: str):
     policy = config["policy"]
     resource_type = deep_get(policy, "resource.type")
-    missing = [path for path in required_paths_for_resource(resource_type) if deep_get(policy, path) in (None, "")]
+    missing = [path for path in required_paths_for_resource(resource_type, command) if deep_get(policy, path) in (None, "")]
+    artifact_cfg = policy.get("artifact", {})
+    if command == "verify-artifact" and not (artifact_cfg.get("path") or artifact_cfg.get("verify_path") or artifact_cfg.get("metadata_path") or artifact_cfg.get("verify_metadata_path")):
+        missing.append("artifact.path|artifact.metadata_path")
     if missing:
         report.add(CheckResult("core.config.required", "ERROR", "blocking", f"Missing required policy fields: {', '.join(missing)}"))
     else:

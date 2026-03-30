@@ -1,32 +1,47 @@
-# Precheck contract
+# Contrato de `backupkit precheck`
 
-## Estado final
+## Objetivo
 
-- `OK`: todos los checks obligatorios pasaron
-- `WARN`: no hay bloqueantes fallidos, pero sí degradaciones
-- `ERROR`: falló al menos un check bloqueante
+Validar que el recurso configurado está en condiciones mínimas de operación antes de correr un backup.
 
-## Orden
+## Salida
 
-1. config mínima
-2. lock
-3. output dir
-4. free space
-5. herramientas requeridas
-6. adapter-specific checks
+Siempre escribe:
 
-## Checks implementados
+- `precheck-report.json`
+
+## Campos de reporte
+
+- `project`
+- `resource`
+- `resource_type`
+- `command=precheck`
+- `phase=precheck`
+- `started_at`
+- `finished_at`
+- `duration_sec`
+- `status`
+- `summary`
+- `checks[]`
+
+## Checks actuales esperables
 
 ### Core
 
 - `core.config.required`
-- `core.lock.available`
 - `core.output_dir.writable`
 - `core.free_space`
 - `core.tools.available`
-- `core.adapter.supported`
+- `core.lock.available`
+- `core.adapter.supported` solo si el adapter no existe
 
-### MySQL
+### Adapter MySQL
 
 - `adapter.mysql.connectivity`
 - `adapter.mysql.auth`
+
+## Semántica de estado
+
+- `OK`: sin warnings ni errores
+- `WARN`: al menos un warning y ningún error
+- `ERROR`: al menos un error
