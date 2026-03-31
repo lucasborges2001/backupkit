@@ -1,53 +1,18 @@
-# Roadmap operativo
+# Roadmap
 
 ## Estado actual
 
-Fases reales ya implementadas:
+- [x] precheck funcional
+- [x] backup MySQL real
+- [x] verify-artifact técnico
+- [x] restore-test MySQL real sobre base temporal
+- [x] validators SQL declarativos sobre restauración
+- [ ] reporte final consolidado
+- [ ] notificación desacoplada
+- [ ] retención
+- [ ] baseline
+- [ ] soporte multi-engine
 
-- `precheck`
-- `backup`
-- `verify-artifact`
+## Próximo paso recomendado
 
-## Próximos hitos razonables
-
-### `restore-test`
-
-Objetivo:
-- levantar una base temporal
-- restaurar el dump
-- comprobar que la restauración técnica funciona
-
-Todavía no implementado.
-
-### `validators`
-
-Objetivo:
-- validar contenido restaurado o consistencia lógica
-- checks de tablas, conteos, queries, invariantes
-
-Todavía no implementado.
-
-### baseline histórico
-
-Objetivo:
-- comparar tamaño, duración, hash policy o señales contra historial previo
-- detectar drift operativo
-
-Todavía no implementado.
-
-### retención
-
-Objetivo:
-- expiración de artefactos
-- limpieza automática
-
-Todavía no implementado.
-
-## Regla de diseño
-
-Cada fase nueva debe:
-
-- reutilizar el modelo de reporte existente
-- extender el contrato sin romper fases previas
-- separar validación técnica de validación funcional
-- evitar vender como soportado lo que todavía es roadmap
+Con validators SQL declarativos ya incorporados en `restore-test`, el siguiente salto razonable ya no es sumar más checks sueltos sino consolidar reporte final y separar notificación del core operativo.

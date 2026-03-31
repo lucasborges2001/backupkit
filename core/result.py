@@ -93,12 +93,16 @@ class RunReport:
         self.finished_at: datetime | None = None
         self.checks: list[CheckResult] = []
         self.artifact: ArtifactMetadata | None = None
+        self.restore_test: dict | None = None
 
     def add(self, result: CheckResult):
         self.checks.append(result)
 
     def set_artifact(self, artifact: ArtifactMetadata):
         self.artifact = artifact
+
+    def set_restore_test(self, data: dict):
+        self.restore_test = data
 
     def finalize(self):
         if self.finished_at is None:
@@ -146,4 +150,6 @@ class RunReport:
         }
         if self.artifact:
             data["artifact"] = self.artifact.as_dict()
+        if self.restore_test is not None:
+            data["restore_test"] = self.restore_test
         return data

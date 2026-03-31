@@ -1,6 +1,6 @@
 # Policy actual soportada
 
-Contrato vigente para `backupkit precheck`, `backupkit backup` y `backupkit verify-artifact`.
+Contrato vigente para `backupkit precheck`, `backupkit backup`, `backupkit verify-artifact` y `backupkit restore-test`.
 
 ## Ejemplo válido para backup
 
@@ -73,6 +73,65 @@ notifications:
       - ERROR
 ```
 
+## Ejemplo válido para restore-test
+
+```yaml
+project:
+  name: mysql-basic
+
+resource:
+  name: mysql-main
+  type: mysql
+  connection:
+    host: 127.0.0.1
+    port: 3306
+    username: root
+
+artifact:
+  output_dir: ./var/output
+  path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
+
+restore_test:
+  database_prefix: bkrt
+  critical_tables:
+    - users
+    - orders
+  smoke_queries:
+    - SELECT 1;
+    - SELECT COUNT(*) FROM users;
+  validators:
+    - id: users_non_zero
+      description: debe existir al menos un usuario
+      sql: SELECT COUNT(*) FROM users;
+      expected:
+        rule: non_zero
+      severity: error
+    - id: orders_below_100000
+      sql: SELECT COUNT(*) FROM orders;
+      expected:
+        rule: less_than
+        value: 100000
+      severity: warning
+
+runtime:
+  lock_dir: ./var/locks
+
+prechecks:
+  require_free_space_mb: 64
+  require_tools:
+    - mysql_query_client
+    - gzip_provider
+    - hash_provider
+
+notifications:
+  telegram:
+    enabled: true
+    notify_on:
+      - WARN
+      - ERROR
+```
+
 ## Secciones soportadas hoy
 
 ### `project`
@@ -83,17 +142,31 @@ notifications:
 
 - `name` requerido
 - `type` requerido
-- `connection.host` requerido para `precheck` y `backup` con MySQL
-- `connection.port` requerido para `precheck` y `backup` con MySQL
+- `connection.host` requerido para `precheck`, `backup` y `restore-test` con MySQL
+- `connection.port` requerido para `precheck`, `backup` y `restore-test` con MySQL
 - `connection.database` requerido para `precheck` y `backup` con MySQL
-- `connection.username` requerido para `precheck` y `backup` con MySQL
+- `connection.username` requerido para `precheck`, `backup` y `restore-test` con MySQL
 
 ### `artifact`
 
 - `output_dir` requerido
 - `path` opcional para `backup`
 - `path` o `metadata_path` requerido para `verify-artifact`
-- `verify_path` y `verify_metadata_path` aceptados como alias explícitos para `verify-artifact`
+- `path` o `metadata_path` requerido para `restore-test`
+- `verify_path` y `verify_metadata_path` aceptados como alias explícitos para `verify-artifact` y `restore-test`
+
+### `restore_test`
+
+- `database_prefix` opcional, default `bkrt`
+- `critical_tables` opcional, lista de nombres de tablas a exigir
+- `smoke_queries` opcional, lista de SQL simples a ejecutar sobre la base restaurada
+- `validators` opcional, lista de validators SQL declarativos a ejecutar sobre la base restaurada
+  - `id` requerido y único
+  - `description` opcional
+  - `sql` requerido
+  - `expected.rule` requerido, soporta `equals`, `greater_than`, `less_than`, `zero`, `non_zero`
+  - `expected.value` requerido solo para `equals`, `greater_than`, `less_than`
+  - `severity` requerida, soporta `error` y `warning`
 
 ### `runtime`
 
@@ -114,7 +187,7 @@ notifications:
 
 ## Variables de `.env`
 
-### Requeridas para backup MySQL real
+### Requeridas para backup y restore MySQL real
 
 - `MYSQL_PASSWORD`
 
@@ -136,14 +209,13 @@ Tool ids conocidos:
 - `gzip_provider`
 - `hash_provider`
 
-Nota: hoy `backup` usa `mysqldump` de forma directa para el dump y genera gzip/sha256 desde Python estándar. `verify-artifact` valida gzip y sha256 desde Python estándar también, pero mantener estos tool ids en precheck ayuda a verificar el entorno operativo completo.
+Nota: hoy `backup` usa `mysqldump` de forma directa para el dump y genera gzip/sha256 desde Python estándar. `verify-artifact` valida gzip y sha256 desde Python estándar. `restore-test` restaura desde Python hacia `mysql` usando stdin. Mantener los tool ids en precheck ayuda a verificar el entorno operativo completo.
 
 ## Lo que no forma parte del contrato vigente
 
 Todavía no se soportan como fases reales ni como schema operativo:
 
-- `restore-test`
-- `validators`
-- `retention`
+- validators de negocio complejos o específicos de dominio
+- retención
 - múltiples motores además de MySQL
 - baseline histórico

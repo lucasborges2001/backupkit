@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import shutil
 import socket
 import tempfile
@@ -10,6 +9,14 @@ from core.config import deep_get
 from core.lock import FileLock
 from core.result import CheckResult, RunReport
 from core.tools import resolve_tool
+from core.sql_validators import load_validators_from_policy, ValidatorConfigError
+
+
+MYSQL_RESTORE_TEST_REQUIRED_PATHS = [
+    "resource.connection.host",
+    "resource.connection.port",
+    "resource.connection.username",
+]
 
 
 def required_paths_for_resource(resource_type: str, command: str):
@@ -27,6 +34,8 @@ def required_paths_for_resource(resource_type: str, command: str):
             "resource.connection.database",
             "resource.connection.username",
         ]
+    if command == 'restore-test' and resource_type == 'mysql':
+        base += MYSQL_RESTORE_TEST_REQUIRED_PATHS
     return base
 
 
@@ -35,8 +44,21 @@ def validate_required_config(config: dict, report: RunReport, command: str):
     resource_type = deep_get(policy, "resource.type")
     missing = [path for path in required_paths_for_resource(resource_type, command) if deep_get(policy, path) in (None, "")]
     artifact_cfg = policy.get("artifact", {})
-    if command == "verify-artifact" and not (artifact_cfg.get("path") or artifact_cfg.get("verify_path") or artifact_cfg.get("metadata_path") or artifact_cfg.get("verify_metadata_path")):
+    if command in {"verify-artifact", "restore-test"} and not (artifact_cfg.get("path") or artifact_cfg.get("verify_path") or artifact_cfg.get("metadata_path") or artifact_cfg.get("verify_metadata_path")):
         missing.append("artifact.path|artifact.metadata_path")
+    if command == 'restore-test':
+        restore_cfg = policy.get('restore_test', {})
+        if not isinstance(restore_cfg.get('critical_tables', []), list):
+            missing.append('restore_test.critical_tables(list)')
+        if restore_cfg.get('smoke_queries') is not None and not isinstance(restore_cfg.get('smoke_queries'), list):
+            missing.append('restore_test.smoke_queries(list)')
+        if restore_cfg.get('validators') is not None and not isinstance(restore_cfg.get('validators'), list):
+            missing.append('restore_test.validators(list)')
+        elif isinstance(restore_cfg.get('validators'), list):
+            try:
+                load_validators_from_policy(restore_cfg.get('validators'))
+            except ValidatorConfigError as exc:
+                missing.append(f'restore_test.validators(valid): {exc}')
     if missing:
         report.add(CheckResult("core.config.required", "ERROR", "blocking", f"Missing required policy fields: {', '.join(missing)}"))
     else:

@@ -1,0 +1,57 @@
+project:
+  name: cargadores
+
+resource:
+  name: mysql-main
+  type: mysql
+  connection:
+    host: 127.0.0.1
+    port: 3306
+    username: root
+
+artifact:
+  output_dir: ./var/output
+  path: ./var/output/cargadores__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: ./var/output/cargadores__mysql-main__20260330T120000Z.sql.gz.metadata.json
+
+restore_test:
+  database_prefix: bkrt
+  critical_tables:
+    - users
+    - orders
+  smoke_queries:
+    - SELECT 1;
+    - SELECT COUNT(*) FROM users;
+  validators:
+    - id: users_non_zero
+      description: debe existir al menos un usuario restaurado
+      sql: SELECT COUNT(*) FROM users;
+      expected:
+        rule: non_zero
+      severity: error
+    - id: orders_below_100000
+      description: validación estructural de volumen básico
+      sql: SELECT COUNT(*) FROM orders;
+      expected:
+        rule: less_than
+        value: 100000
+      severity: warning
+
+runtime:
+  lock_dir: ./var/locks
+
+prechecks:
+  require_free_space_mb: 64
+  warn_free_space_below_mb: 128
+  connectivity_timeout_sec: 3
+  require_tools:
+    - mysql_query_client
+    - gzip_provider
+    - hash_provider
+
+notifications:
+  telegram:
+    enabled: true
+    notify_on:
+      - WARN
+      - ERROR

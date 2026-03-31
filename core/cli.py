@@ -16,6 +16,9 @@ def format_console(report: RunReport) -> str:
     if report.artifact:
         lines.append(f"artifact={report.artifact.path}")
         lines.append(f"sha256={report.artifact.sha256}")
+    if report.restore_test:
+        lines.append(f"restore_db={report.restore_test.get('database')}")
+        lines.append(f"cleanup={report.restore_test.get('cleanup_succeeded')}")
     for c in report.checks:
         lines.append(f"[{c.status}] {c.check_id}: {c.message}")
     return "\n".join(lines)
@@ -30,6 +33,9 @@ def format_telegram(report: RunReport) -> str:
     ]
     if report.artifact:
         lines.append(f"Artefacto: {Path(report.artifact.path).name}")
+    if report.restore_test:
+        lines.append(f"Restore DB temporal: {report.restore_test.get('database')}")
+        lines.append(f"Cleanup OK: {report.restore_test.get('cleanup_succeeded')}")
     if failing:
         lines.append("")
         lines.append("Checks:")
@@ -146,6 +152,10 @@ def run_verify_artifact(args) -> int:
     return _run_with_adapter(args, 'verify-artifact', 'run_verify_artifact')
 
 
+def run_restore_test(args) -> int:
+    return _run_with_adapter(args, 'restore-test', 'run_restore_test')
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog='backupkit')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -162,6 +172,10 @@ def main() -> int:
     p_verify.add_argument('--env', required=True)
     p_verify.add_argument('--policy', required=True)
 
+    p_restore = sub.add_parser('restore-test', help='Restore the generated artifact into a temporary database and validate it')
+    p_restore.add_argument('--env', required=True)
+    p_restore.add_argument('--policy', required=True)
+
     args = parser.parse_args()
 
     if args.command == 'precheck':
@@ -170,4 +184,6 @@ def main() -> int:
         return run_backup(args)
     if args.command == 'verify-artifact':
         return run_verify_artifact(args)
+    if args.command == 'restore-test':
+        return run_restore_test(args)
     return 2
