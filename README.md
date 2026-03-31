@@ -97,7 +97,34 @@ Restore real para MySQL sobre base temporal efímera:
   --policy ./examples/mysql-basic/backup/verify.policy.yml
 ```
 
-### Restore test
+#
+## Reporte JSON de pipeline
+
+Desde `report_version = 2`, los reportes pasan a exponer un modelo de pipeline con:
+
+- `metadata`
+- `final_status`
+- `phases[]`
+- `artifacts[]`
+- `validators[]`
+- `notifications[]`
+- `final_summary`
+
+Se mantiene compatibilidad razonable con el formato anterior: siguen presentes `status`, `summary`, `checks`, `artifact`, `restore_test` y `duration_sec`.
+
+Ver detalle del contrato en `docs/report-format.md`.
+
+## Nota de migración
+
+Si alguna integración consumía el reporte viejo:
+
+- `status` sigue existiendo, pero el campo canónico nuevo es `final_status`
+- `checks[]` sigue existiendo, pero ahora la vista estructural recomendada es `phases[0].evidence.checks[]`
+- `artifact` sigue existiendo, pero la vista expandible nueva es `artifacts[]`
+- `restore_test.validator_results` sigue existiendo, pero la vista plana nueva es `validators[]`
+- `duration_sec` sigue existiendo, pero la métrica operativa nueva es `metadata.duration_ms`
+
+## Restore test
 
 ```bash
 ./bin/backupkit restore-test \

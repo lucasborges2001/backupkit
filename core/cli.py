@@ -103,10 +103,15 @@ def finish_run(config: dict, report: RunReport, output_dir: str):
     try:
         note = maybe_notify(config, report)
         if note:
-            report.add(CheckResult('notify.telegram', 'WARN' if 'missing' in note else 'OK', 'warning', note))
+            status = 'WARN' if 'missing' in note else 'OK'
+            severity = 'warning' if status == 'WARN' else 'info'
+            report.add(CheckResult('notify.telegram', status, severity, note))
+            report.add_notification('telegram', status, note)
             report_path = write_report(report, output_dir)
     except Exception as exc:
-        report.add(CheckResult('notify.telegram', 'WARN', 'warning', f'telegram failed: {exc}'))
+        message = f'telegram failed: {exc}'
+        report.add(CheckResult('notify.telegram', 'WARN', 'warning', message))
+        report.add_notification('telegram', 'WARN', message)
         report_path = write_report(report, output_dir)
 
     print(format_console(report))
