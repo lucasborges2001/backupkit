@@ -9,6 +9,7 @@ from core.config import load_config, deep_get
 from core.notifier import NotificationService
 from core.precheck import validate_required_config, validate_output_dir, validate_free_space, validate_tools, acquire_lock
 from core.result import RunReport, CheckResult
+from core.retention import run_housekeeping
 
 
 def format_console(report: RunReport) -> str:
@@ -28,9 +29,19 @@ def write_report(report: RunReport, output_dir: str):
     report.finalize()
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    report_path = out / f'{report.command}-report.json'
+    
+    # Primary timestamped report
+    safe_project = ''.join(ch if ch.isalnum() or ch in {'-', '_'} else '-' for ch in report.project).strip('-') or 'project'
+    safe_resource = ''.join(ch if ch.isalnum() or ch in {'-', '_'} else '-' for ch in report.resource).strip('-') or 'resource'
+    report_filename = f"{safe_project}__{safe_resource}__{report.timestamp_slug}__{report.command}-report.json"
+    report_path = out / report_filename
     report_path.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False), encoding='utf-8')
-    return report_path
+    
+    # Latest report link (overwritten)
+    latest_report_path = out / f'{report.command}-report.json'
+    latest_report_path.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False), encoding='utf-8')
+    
+    return latest_report_path
 
 
 def build_report(config: dict, command: str) -> RunReport:
@@ -60,6 +71,24 @@ def resolve_adapter(config: dict, report: RunReport):
 
 
 def finish_run(config: dict, report: RunReport, output_dir: str):
+    # Run housekeeping phase if enabled
+    try:
+        hk_result = run_housekeeping(config, report)
+        if hk_result:
+            report.set_housekeeping(hk_result)
+            status = hk_result.get('status', 'OK')
+            deleted = hk_result.get('summary', {}).get('deleted_count', 0)
+            kept = hk_result.get('summary', {}).get('kept_count', 0)
+            protected = hk_result.get('summary', {}).get('protected_count', 0)
+            report.add(CheckResult(
+                'core.retention.housekeeping',
+                status,
+                'warning' if status == 'WARN' else 'info',
+                f"Housekeeping {status}: deleted={deleted}, kept={kept}, protected={protected}"
+            ))
+    except Exception as exc:
+        report.add(CheckResult('core.retention.error', 'WARN', 'warning', f'Housekeeping failed: {exc}'))
+
     report_path = write_report(report, output_dir)
     try:
         service = NotificationService(config)

@@ -55,26 +55,27 @@ while i < len(args):
     i += 1
 
 if sql:
-    m = re.match(r'CREATE DATABASE `?([a-zA-Z0-9_]+)`?;', sql)
+    sql_clean = sql.strip()
+    m = re.search(r'CREATE DATABASE `?([a-zA-Z0-9_]+)`?', sql_clean, re.I)
     if m:
         ensure_db(m.group(1))
         save()
         sys.exit(0)
-    m = re.match(r'DROP DATABASE IF EXISTS `?([a-zA-Z0-9_]+)`?;', sql)
+    m = re.search(r'DROP DATABASE IF EXISTS `?([a-zA-Z0-9_]+)`?', sql_clean, re.I)
     if m:
         state['databases'].pop(m.group(1), None)
         save()
         sys.exit(0)
-    m = re.match(r"SHOW TABLES LIKE '([^']+)';", sql)
+    m = re.search(r"SHOW TABLES LIKE '([^']+)'", sql_clean, re.I)
     if m:
         table = m.group(1)
         if db and table in state['databases'].get(db, {}).get('tables', {}):
             sys.stdout.write(table + '\n')
         sys.exit(0)
-    if sql.strip() == 'SELECT 1;':
+    if 'SELECT 1' in sql_clean.upper():
         sys.stdout.write('1\n')
         sys.exit(0)
-    m = re.match(r'SELECT COUNT\(\*\) FROM ([a-zA-Z0-9_]+);', sql.strip())
+    m = re.search(r'SELECT COUNT\(\*\) FROM ([a-zA-Z0-9_]+)', sql_clean, re.I)
     if m:
         table = m.group(1)
         rows = state['databases'].get(db, {}).get('tables', {}).get(table, [])
@@ -86,9 +87,9 @@ if not db:
     sys.exit(0)
 ensure_db(db)
 content = sys.stdin.buffer.read().decode('utf-8', errors='replace')
-for table in re.findall(r'CREATE TABLE `?([a-zA-Z0-9_]+)`?', content):
+for table in re.findall(r'CREATE TABLE `?([a-zA-Z0-9_]+)`?', content, re.IGNORECASE):
     state['databases'][db]['tables'].setdefault(table, [])
-for table, values in re.findall(r'INSERT INTO `?([a-zA-Z0-9_]+)`? VALUES \((.*?)\);', content):
+for table, values in re.findall(r'INSERT INTO `?([a-zA-Z0-9_]+)`?.*?VALUES\s*\((.*?)\)', content, re.IGNORECASE | re.DOTALL):
     state['databases'][db]['tables'].setdefault(table, []).append(values)
 save()
 sys.exit(0)
@@ -107,18 +108,52 @@ class RestoreTestCommandTests(unittest.TestCase):
         self.restore_policy_path = self.root / 'restore.policy.yml'
         self.env_path = self.root / '.env.backup'
         self.state_path = self.root / 'mysql_state.json'
-        self.mysqldump_path = self.bin_dir / 'mysqldump'
-        self.mysql_path = self.bin_dir / 'mysql'
+        
+        mysqldump_name = 'mysqldump.bat' if os.name == 'nt' else 'mysqldump'
+        mysql_name = 'mysql.bat' if os.name == 'nt' else 'mysql'
+        gzip_name = 'gzip.bat' if os.name == 'nt' else 'gzip'
+        self.mysqldump_path = self.bin_dir / mysqldump_name
+        self.mysql_path = self.bin_dir / mysql_name
+        self.gzip_path = self.bin_dir / gzip_name
 
-        self.mysqldump_path.write_text(
-            '#!/usr/bin/env python3\n'
-            'import sys\n'
-            'sys.stdout.write("-- sample dump\\nCREATE TABLE users (id int);\\nINSERT INTO users VALUES (1);\\nCREATE TABLE orders (id int);\\nINSERT INTO orders VALUES (9);\\n")\n',
-            encoding='utf-8',
-        )
-        self.mysql_path.write_text(FAKE_MYSQL, encoding='utf-8')
+        if os.name == 'nt':
+            # Create a separate python script for the complex mock
+            mysql_py = self.bin_dir / 'mysql_logic.py'
+            mysql_py.write_text(FAKE_MYSQL, encoding='utf-8')
+
+            self.mysqldump_path.write_text(
+                '@echo off\n'
+                'python -c "import sys; sys.stdout.write(\'-- sample dump\\nCREATE TABLE users (id int);\\nINSERT INTO users VALUES (1);\\nCREATE TABLE orders (id int);\\nINSERT INTO orders VALUES (9);\\n\')"\n',
+                encoding='utf-8',
+            )
+            self.mysql_path.write_text(
+                f'@echo off\n'
+                f'set "RAW_ARGS=%*"\n'
+                f'echo %RAW_ARGS% | findstr /I "SELECT.1" >nul && ( echo 1 & exit /b 0 )\n'
+                f'set FAKE_MYSQL_STATE={self.state_path}\n'
+                f'python "%~dp0mysql_logic.py" %*\n',
+                encoding='utf-8',
+            )
+            self.gzip_path.write_text(
+                '@echo off\nexit /b 0\n',
+                encoding='utf-8',
+            )
+        else:
+            self.mysqldump_path.write_text(
+                '#!/usr/bin/env python3\n'
+                'import sys\n'
+                'sys.stdout.write("-- sample dump\\nCREATE TABLE users (id int);\\nINSERT INTO users VALUES (1);\\nCREATE TABLE orders (id int);\\nINSERT INTO orders VALUES (9);\\n")\n',
+                encoding='utf-8',
+            )
+            self.mysql_path.write_text(FAKE_MYSQL, encoding='utf-8')
+            self.gzip_path.write_text(
+                '#!/usr/bin/env python3\nimport sys\nimport gzip\n# Simple mock gzip\n',
+                encoding='utf-8',
+            )
         self.mysqldump_path.chmod(self.mysqldump_path.stat().st_mode | stat.S_IEXEC)
         self.mysql_path.chmod(self.mysql_path.stat().st_mode | stat.S_IEXEC)
+        if hasattr(self, 'gzip_path'):
+            self.gzip_path.chmod(self.gzip_path.stat().st_mode | stat.S_IEXEC)
 
         self.env_path.write_text('MYSQL_PASSWORD="secret"\n', encoding='utf-8')
         self.backup_policy_path.write_text(textwrap.dedent(f'''

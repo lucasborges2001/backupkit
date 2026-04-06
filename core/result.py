@@ -90,10 +90,12 @@ class RunReport:
         self.command = command
         self.phase = phase or command
         self.started_at = datetime.now(timezone.utc)
+        self.timestamp_slug = self.started_at.strftime('%Y%m%dT%H%M%SZ')
         self.finished_at: datetime | None = None
         self.checks: list[CheckResult] = []
         self.artifact: ArtifactMetadata | None = None
         self.restore_test: dict | None = None
+        self.housekeeping: dict | None = None
         self.notifications: list[dict] = []
 
     def add(self, result: CheckResult):
@@ -104,6 +106,9 @@ class RunReport:
 
     def set_restore_test(self, data: dict):
         self.restore_test = data
+
+    def set_housekeeping(self, data: dict):
+        self.housekeeping = data
 
     def add_notification(self, channel: str, status: str, message: str, meta: dict | None = None):
         self.notifications.append({
@@ -199,6 +204,8 @@ class RunReport:
             evidence['artifacts'] = self._artifact_list()
         if self.restore_test is not None:
             evidence['restore_test'] = self.restore_test
+        if self.housekeeping is not None:
+            evidence['housekeeping'] = self.housekeeping
         validators = self._validator_list()
         if validators:
             evidence['validators'] = validators
@@ -255,4 +262,6 @@ class RunReport:
             data['artifact'] = self.artifact.as_dict()
         if self.restore_test is not None:
             data['restore_test'] = self.restore_test
+        if self.housekeeping is not None:
+            data['housekeeping'] = self.housekeeping
         return data

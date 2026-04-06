@@ -73,7 +73,7 @@ class MySQLAdapter:
         database = deep_get(policy, 'resource.connection.database')
         username = deep_get(policy, 'resource.connection.username')
         password = env.get('MYSQL_PASSWORD', '')
-        timestamp_slug = utc_timestamp_slug()
+        timestamp_slug = report.timestamp_slug
         final_path = output_dir / build_backup_basename(report.project, report.resource, timestamp_slug)
         temp_path = final_path.with_suffix(final_path.suffix + '.part')
         mysqldump_bin = resolve_tool('mysql_dump_client') or 'mysqldump'
@@ -207,7 +207,8 @@ class MySQLAdapter:
 
             with gzip.open(verification.artifact_path, 'rb') as dump_stream:
                 restore_cmd = [mysql_bin, '-h', host, '-P', str(port), '-u', username, temp_database]
-                completed = subprocess.run(restore_cmd, env=env_vars, stdin=dump_stream, capture_output=True, timeout=max(30, timeout))
+                # Use input= instead of stdin= to ensure we pass decompressed data
+                completed = subprocess.run(restore_cmd, env=env_vars, input=dump_stream.read(), capture_output=True, timeout=max(30, timeout))
             if completed.returncode != 0:
                 if isinstance(completed.stderr, bytes):
                     stderr = (completed.stderr or completed.stdout or b'').decode('utf-8', errors='replace').strip()

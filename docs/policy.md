@@ -185,6 +185,17 @@ notifications:
 - `enabled` opcional
 - `notify_on` opcional
 
+### `retention`
+
+- `enabled` opcional, default `false`
+- `keep_success` opcional, default `7`
+- `keep_non_success` opcional, default `5`
+- `delete_artifacts` opcional, default `true`
+- `delete_reports` opcional, default `true`
+- `require_verified_newer_backup` opcional, default `true`
+- `protect_last_known_valid` opcional, default `true`
+- `dry_run` opcional, default `false`
+
 ## Variables de `.env`
 
 ### Requeridas para backup y restore MySQL real
@@ -216,6 +227,5 @@ Nota: hoy `backup` usa `mysqldump` de forma directa para el dump y genera gzip/s
 Todavía no se soportan como fases reales ni como schema operativo:
 
 - validators de negocio complejos o específicos de dominio
-- retención
 - múltiples motores además de MySQL
 - baseline histórico

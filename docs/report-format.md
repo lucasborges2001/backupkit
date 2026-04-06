@@ -65,13 +65,15 @@ Representar una corrida operativa completa con:
         "artifacts": [],
         "restore_test": {},
         "validators": [],
-        "notifications": []
+        "notifications": [],
+        "housekeeping": {}
       }
     }
   ],
   "artifacts": [],
   "validators": [],
   "notifications": [],
+  "housekeeping": {},
   "final_summary": "Pipeline restore-test finalizó con estado WARN; checks total=11; ok=10; warn=1; error=0"
 }
 ```
@@ -143,6 +145,21 @@ Estructura actual:
 - `status`
 - `message`
 - `meta`
+
+### `housekeeping`
+
+Detalle del proceso de retención ejecutado. Solo presente si `retention` está habilitado.
+
+Estructura:
+
+- `status`: `OK` | `WARN` | `SKIP`
+- `policy`: copia de la política aplicada
+- `discovered_runs[]`: lista de corridas encontradas en el output
+- `kept_runs[]`: corridas mantenidas por policy
+- `protected_runs[]`: corridas protegidas (ej: last known valid)
+- `deleted_runs[]`: corridas eliminadas
+- `skipped_deletions[]`: candidatos a borrado no ejecutados (ej: dry-run)
+- `summary`: conteos consolidados de la operación de housekeeping
 
 ### `final_summary`
 

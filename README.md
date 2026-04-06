@@ -13,6 +13,7 @@ Starter operativo de `backupkit` con **precheck funcional**, **backup MySQL real
 - core reusable con registry de adapters
 - adapter MySQL inicial
 - reporte JSON por corrida
+- reportes históricos timestamped y rotación automática
 - metadata JSON por artefacto de backup
 - Telegram solo para `WARN` y `ERROR`
 - lock de ejecución por `project/resource`
@@ -63,10 +64,19 @@ Restore real para MySQL sobre base temporal efímera:
 - limpia con `DROP DATABASE IF EXISTS` incluso ante error
 - integra resultado y cleanup en `restore-test-report.json`
 
+### `retention / housekeeping`
+
+Control de crecimiento histórico del output local:
+- bloque `retention` declarativo en `policy.yml`
+- identificación de **corridas lógicas** (artifact + metadata + reportes)
+- política por cantidad de backups exitosos y fallidos a conservar
+- protección automática del **último backup válido conocido**
+- modo `dry_run` para auditoría
+- reporte detallado de decisiones y archivos eliminados/conservados en el JSON de salida
+
 ## Qué no trae todavía
 
 - validators de negocio complejos o específicos de dominio
-- retención
 - múltiples motores además de MySQL
 - baseline histórico
 - pipeline final completo

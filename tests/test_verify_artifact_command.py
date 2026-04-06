@@ -25,21 +25,42 @@ class VerifyArtifactCommandTests(unittest.TestCase):
         self.backup_policy_path = self.root / 'backup.policy.yml'
         self.verify_policy_path = self.root / 'verify.policy.yml'
         self.env_path = self.root / '.env.backup'
-        self.mysqldump_path = self.bin_dir / 'mysqldump'
-        self.mysql_path = self.bin_dir / 'mysql'
+        self.mysqldump_path = self.bin_dir / ('mysqldump.bat' if os.name == 'nt' else 'mysqldump')
+        self.mysql_path = self.bin_dir / ('mysql.bat' if os.name == 'nt' else 'mysql')
+        self.gzip_path = self.bin_dir / ('gzip.bat' if os.name == 'nt' else 'gzip')
 
-        self.mysqldump_path.write_text(
-            '#!/usr/bin/env python3\n'
-            'import sys\n'
-            'sys.stdout.write("-- sample dump\\nCREATE DATABASE IF NOT EXISTS `app`;\\n")\n',
-            encoding='utf-8',
-        )
-        self.mysql_path.write_text(
-            '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n',
-            encoding='utf-8',
-        )
+        if os.name == 'nt':
+            self.mysqldump_path.write_text(
+                '@echo off\n'
+                'python -c "import sys; sys.stdout.write(\'-- sample dump\\nCREATE DATABASE IF NOT EXISTS `app`;\\n\')"\n',
+                encoding='utf-8',
+            )
+            self.mysql_path.write_text(
+                '@echo off\nexit /b 0\n',
+                encoding='utf-8',
+            )
+            self.gzip_path.write_text(
+                '@echo off\nexit /b 0\n',
+                encoding='utf-8',
+            )
+        else:
+            self.mysqldump_path.write_text(
+                '#!/usr/bin/env python3\n'
+                'import sys\n'
+                'sys.stdout.write("-- sample dump\\nCREATE DATABASE IF NOT EXISTS `app`;\\n")\n',
+                encoding='utf-8',
+            )
+            self.mysql_path.write_text(
+                '#!/usr/bin/env python3\nimport sys\nsys.exit(0)\n',
+                encoding='utf-8',
+            )
+            self.gzip_path.write_text(
+                '#!/usr/bin/env python3\nimport sys\nimport gzip\n# Simple mock gzip\n',
+                encoding='utf-8',
+            )
         self.mysqldump_path.chmod(self.mysqldump_path.stat().st_mode | stat.S_IEXEC)
         self.mysql_path.chmod(self.mysql_path.stat().st_mode | stat.S_IEXEC)
+        self.gzip_path.chmod(self.gzip_path.stat().st_mode | stat.S_IEXEC)
 
         self.env_path.write_text('MYSQL_PASSWORD="secret"\n', encoding='utf-8')
         base_policy = textwrap.dedent(f'''
