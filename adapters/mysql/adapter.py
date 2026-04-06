@@ -88,7 +88,7 @@ class MySQLAdapter:
             '--routines',
             '--triggers',
             '--events',
-            '--databases', database,
+            database,
         ]
 
         env_vars = os.environ.copy()
@@ -220,7 +220,8 @@ class MySQLAdapter:
 
             for table in critical_tables:
                 table_name = str(table).strip()
-                sql = f"SHOW TABLES LIKE '{table_name.replace("'", "''")}';"
+                safe_table_name = table_name.replace("'", "''")
+                sql = f"SHOW TABLES LIKE '{safe_table_name}';"
                 check = run_mysql(sql, database=temp_database)
                 if check.returncode != 0:
                     stderr = (check.stderr or check.stdout or '').strip()
