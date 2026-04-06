@@ -6,7 +6,7 @@ from pathlib import Path
 
 from adapters import ADAPTERS
 from core.config import load_config, deep_get
-from core.notifier import notify_telegram
+from core.notifier import NotificationService
 from core.precheck import validate_required_config, validate_output_dir, validate_free_space, validate_tools, acquire_lock
 from core.result import RunReport, CheckResult
 
@@ -24,26 +24,6 @@ def format_console(report: RunReport) -> str:
     return "\n".join(lines)
 
 
-def format_telegram(report: RunReport) -> str:
-    failing = [c for c in report.checks if c.status in {'WARN', 'ERROR'}]
-    lines = [
-        f"[backupkit] {report.command.upper()} {report.status}",
-        f"Proyecto: {report.project}",
-        f"Recurso: {report.resource}",
-    ]
-    if report.artifact:
-        lines.append(f"Artefacto: {Path(report.artifact.path).name}")
-    if report.restore_test:
-        lines.append(f"Restore DB temporal: {report.restore_test.get('database')}")
-        lines.append(f"Cleanup OK: {report.restore_test.get('cleanup_succeeded')}")
-    if failing:
-        lines.append("")
-        lines.append("Checks:")
-        for c in failing:
-            lines.append(f"- {c.check_id}: {c.message}")
-    return "\n".join(lines)
-
-
 def write_report(report: RunReport, output_dir: str):
     report.finalize()
     out = Path(output_dir)
@@ -51,24 +31,6 @@ def write_report(report: RunReport, output_dir: str):
     report_path = out / f'{report.command}-report.json'
     report_path.write_text(json.dumps(report.as_dict(), indent=2, ensure_ascii=False), encoding='utf-8')
     return report_path
-
-
-def maybe_notify(config: dict, report: RunReport):
-    notify_on = set(deep_get(config['policy'], 'notifications.telegram.notify_on', []) or [])
-    enabled = bool(deep_get(config['policy'], 'notifications.telegram.enabled', False))
-    env = config['env']
-    token = env.get('TELEGRAM_BOT_TOKEN', '')
-    chat_id = env.get('TELEGRAM_CHAT_ID', '')
-    if report.status == 'OK':
-        return None
-    if not enabled:
-        return None
-    if report.status not in notify_on:
-        return None
-    if not token or not chat_id:
-        return 'telegram disabled: missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID'
-    notify_telegram(token, chat_id, format_telegram(report))
-    return 'telegram sent'
 
 
 def build_report(config: dict, command: str) -> RunReport:
@@ -99,19 +61,16 @@ def resolve_adapter(config: dict, report: RunReport):
 
 def finish_run(config: dict, report: RunReport, output_dir: str):
     report_path = write_report(report, output_dir)
-    note = None
     try:
-        note = maybe_notify(config, report)
-        if note:
-            status = 'WARN' if 'missing' in note else 'OK'
-            severity = 'warning' if status == 'WARN' else 'info'
-            report.add(CheckResult('notify.telegram', status, severity, note))
-            report.add_notification('telegram', status, note)
-            report_path = write_report(report, output_dir)
+        service = NotificationService(config)
+        for res in service.notify(report):
+            report.add(CheckResult(f'notify.{res.channel}', res.status, res.severity, res.note))
+            report.add_notification(res.channel, res.status, res.note)
+        report_path = write_report(report, output_dir)
     except Exception as exc:
-        message = f'telegram failed: {exc}'
-        report.add(CheckResult('notify.telegram', 'WARN', 'warning', message))
-        report.add_notification('telegram', 'WARN', message)
+        message = f'notifications service failed: {exc}'
+        report.add(CheckResult('notify.error', 'WARN', 'warning', message))
+        report.add_notification('system', 'WARN', message)
         report_path = write_report(report, output_dir)
 
     print(format_console(report))
