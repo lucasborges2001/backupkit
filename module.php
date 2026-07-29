@@ -22,6 +22,15 @@ return [
         'mode' => 'backend-readonly',
         'function' => 'backupkit_health_payload',
     ],
+    'deployment' => [
+        'contract' => 'backupkit.deploy.v1',
+        'profile' => 'server',
+        'module_manifest' => 'deploy/module.manifest.json',
+        'server_manifest' => 'deploy/server.manifest.json',
+        'include_in_app_deploy' => false,
+        'requires_public_html' => false,
+        'base_runtime_dependency' => false,
+    ],
     'capabilities' => [
         'public' => false,
         'api' => false,
@@ -59,6 +68,7 @@ return [
             'backupkit.manifest.v1',
             'backupkit.report.v2',
             'backupkit.health.v1',
+            'backupkit.deploy.v1',
         ],
         'writes' => [],
     ],
