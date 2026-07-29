@@ -141,17 +141,21 @@ class VerifyArtifactCommandTests(unittest.TestCase):
                 enabled: false
         '''), encoding='utf-8')
 
-    def test_verify_artifact_validates_existing_backup(self):
-        artifact_path, metadata_path = self._run_backup()
-        self._write_verify_policy(artifact_path, metadata_path)
-
+    def _run_verify(self) -> tuple[int, dict]:
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.verify_policy_path))
         original_path = os.environ.get('PATH', '')
         with patch.dict(os.environ, {'PATH': f'{self.bin_dir}{os.pathsep}{original_path}'}):
             exit_code = run_verify_artifact(args)
+        report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
+        return exit_code, report
+
+    def test_verify_artifact_validates_existing_backup(self):
+        artifact_path, metadata_path = self._run_backup()
+        self._write_verify_policy(artifact_path, metadata_path)
+
+        exit_code, report = self._run_verify()
 
         self.assertEqual(exit_code, 0)
-        report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
         self.assertEqual(report['metadata']['command'], 'verify-artifact')
         self.assertEqual(report['final_status'], 'OK')
         self.assertEqual(report['artifacts'][0]['path'], str(artifact_path))
@@ -164,6 +168,19 @@ class VerifyArtifactCommandTests(unittest.TestCase):
         self.assertNotIn('artifact', report)
         self.assertNotIn('checks', report)
 
+    def test_verify_artifact_resolves_relative_paths_from_output_dir(self):
+        artifact_path, metadata_path = self._run_backup()
+        self._write_verify_policy(Path(artifact_path.name), Path(metadata_path.name))
+
+        exit_code, report = self._run_verify()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report['final_status'], 'OK')
+        self.assertEqual(report['artifacts'][0]['path'], str(artifact_path))
+        self.assertEqual(report['artifacts'][0]['metadata_path'], str(metadata_path))
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
+        self.assertEqual(checks['artifact.metadata.consistency']['status'], 'OK')
+
     def test_verify_artifact_detects_sha_mismatch(self):
         artifact_path, metadata_path = self._run_backup()
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
@@ -171,13 +188,9 @@ class VerifyArtifactCommandTests(unittest.TestCase):
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
         self._write_verify_policy(artifact_path, metadata_path)
 
-        args = argparse.Namespace(env=str(self.env_path), policy=str(self.verify_policy_path))
-        original_path = os.environ.get('PATH', '')
-        with patch.dict(os.environ, {'PATH': f'{self.bin_dir}{os.pathsep}{original_path}'}):
-            exit_code = run_verify_artifact(args)
+        exit_code, report = self._run_verify()
 
         self.assertEqual(exit_code, 2)
-        report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
         checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
         self.assertEqual(checks['artifact.sha256.match']['status'], 'ERROR')
         self.assertEqual(report['final_status'], 'ERROR')
