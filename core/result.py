@@ -161,6 +161,13 @@ class RunReport:
     def _notifications_list(self) -> list[dict]:
         return list(self.notifications)
 
+    def _restore_test_payload(self) -> dict:
+        if not self.restore_test:
+            return {}
+        payload = dict(self.restore_test)
+        payload.pop('validator_results', None)
+        return payload
+
     def _summary_human(self) -> str:
         counts = self.summary
         parts = [
@@ -197,14 +204,6 @@ class RunReport:
                 'total': counts['total'],
             },
         }
-        evidence = {
-            'checks': [c.as_dict() for c in self.checks],
-            'artifacts': self._artifact_list(),
-            'restore_test': self.restore_test or {},
-            'validators': self._validator_list(),
-            'notifications': self._notifications_list(),
-            'housekeeping': self.housekeeping or {},
-        }
         return {
             'id': self.phase,
             'status': self.status,
@@ -212,14 +211,14 @@ class RunReport:
             'finished_at': self.finished_at.isoformat() if self.finished_at else None,
             'duration_ms': self.duration_ms,
             'summary': phase_summary,
-            'evidence': evidence,
+            'evidence': {
+                'checks': [c.as_dict() for c in self.checks],
+                'restore_test': self._restore_test_payload(),
+            },
         }
 
     def as_dict(self):
         self.finalize()
-        artifacts = self._artifact_list()
-        validators = self._validator_list()
-        notifications = self._notifications_list()
         return {
             'report_version': self.report_version,
             'metadata': {
@@ -233,9 +232,9 @@ class RunReport:
             },
             'final_status': self.status,
             'phases': [self._phase_payload()],
-            'artifacts': artifacts,
-            'validators': validators,
-            'notifications': notifications,
+            'artifacts': self._artifact_list(),
+            'validators': self._validator_list(),
+            'notifications': self._notifications_list(),
             'housekeeping': self.housekeeping or {},
             'final_summary': self._summary_human(),
         }
