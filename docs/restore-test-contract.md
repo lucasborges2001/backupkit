@@ -17,7 +17,7 @@ Demostrar que un artefacto ya generado:
 1. valida configuración y campos soportados;
 2. adquiere el lock `project/resource`;
 3. valida output dir, espacio y herramientas;
-4. ejecuta internamente la verificación del artefacto;
+4. verifica el artefacto;
 5. crea una base temporal efímera;
 6. importa el dump `.sql.gz` mediante `mysql`;
 7. valida tablas críticas;
@@ -72,14 +72,14 @@ prechecks:
     - hash_provider
 ```
 
-Nombres canónicos de artefacto:
+Nombres canónicos:
 
 ```text
 artifact.path
 artifact.metadata_path
 ```
 
-`artifact.verify_path` y `artifact.verify_metadata_path` son campos retirados y producen `core.config.unsupported=ERROR`.
+`artifact.verify_path` y `artifact.verify_metadata_path` producen `core.config.unsupported=ERROR`.
 
 ## Códigos de salida
 
@@ -91,24 +91,20 @@ artifact.metadata_path
 
 ## Reporte `v2`
 
-Rutas canónicas:
+Mapa 1 a 1 del comando:
 
-```text
-metadata.command = restore-test
-final_status
-artifacts[]
-validators[]
-phases[0].evidence.checks[]
-phases[0].evidence.restore_test
-housekeeping
-notifications[]
-```
+| Concepto | Ruta única |
+|---|---|
+| comando | `metadata.command` |
+| estado final | `final_status` |
+| artefacto verificado | `artifacts[]` |
+| resultados de validators | `validators[]` |
+| checks | `phases[0].evidence.checks[]` |
+| base temporal, cleanup, tablas y definiciones | `phases[0].evidence.restore_test` |
+| retención | `housekeeping` |
+| notificaciones | `notifications[]` |
 
-El detalle de restore vive exclusivamente en:
-
-```text
-phases[0].evidence.restore_test
-```
+El detalle de restore no contiene `validator_results`; esos resultados viven exclusivamente en `validators[]`.
 
 Ejemplo parcial:
 
@@ -125,7 +121,6 @@ Ejemplo parcial:
       "status": "OK",
       "evidence": {
         "checks": [],
-        "artifacts": [],
         "restore_test": {
           "database": "bkrt_mysql_basic_mysql_main_20260330t120000z",
           "artifact_path": "/srv/backupkit/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz",
@@ -141,35 +136,31 @@ Ejemplo parcial:
               "severity": "error"
             }
           ],
-          "validator_results": [
-            {
-              "id": "users_non_zero",
-              "status": "OK",
-              "actual_value": 42
-            }
-          ],
           "validators_summary": {
             "total": 1,
             "ok": 1,
             "warn": 0,
             "error": 0
           }
-        },
-        "validators": [],
-        "notifications": [],
-        "housekeeping": {}
+        }
       }
     }
   ],
   "artifacts": [],
-  "validators": [],
+  "validators": [
+    {
+      "id": "users_non_zero",
+      "status": "OK",
+      "actual_value": 42
+    }
+  ],
   "notifications": [],
   "housekeeping": {},
   "final_summary": "..."
 }
 ```
 
-No se publican `status`, `checks`, `artifact` ni `restore_test` como campos top-level.
+No se publican `status`, `checks`, `artifact` ni `restore_test` como campos top-level. Tampoco se replican `artifacts`, `validators`, `notifications` o `housekeeping` dentro de la fase.
 
 ## Validators
 
@@ -181,7 +172,7 @@ Reglas soportadas:
 - `zero`;
 - `non_zero`.
 
-Impacto de severidad:
+Impacto:
 
 - `severity: error`: un fallo degrada a `ERROR`;
 - `severity: warning`: un fallo degrada a `WARN`.
@@ -189,16 +180,16 @@ Impacto de severidad:
 ## Invariantes de cleanup
 
 - el cleanup se intenta aunque falle el import o una validación posterior;
-- `cleanup_attempted` debe reflejar el intento real;
+- `cleanup_attempted` refleja el intento real;
 - `cleanup_succeeded=false` agrega evidencia de fallo;
-- el comando no reutiliza una base temporal previa;
+- no se reutiliza una base temporal previa;
 - el nombre temporal se genera por corrida.
 
 ## Límites actuales
 
-- usa una base temporal en el mismo servidor MySQL configurado;
+- usa una base temporal en el mismo servidor MySQL;
 - no crea un contenedor o instancia aislada adicional;
 - no soporta validators de negocio complejos ni una DSL avanzada;
 - asume que el dump puede restaurarse en una base recién creada;
-- un dump con `USE otra_db` o DDL dependiente del entorno puede requerir adaptación futura;
+- DDL dependiente del entorno puede requerir adaptación futura;
 - no soporta motores distintos de MySQL.
