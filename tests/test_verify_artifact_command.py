@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import gzip
 import json
 import os
 import stat
@@ -109,18 +108,10 @@ class VerifyArtifactCommandTests(unittest.TestCase):
                 exit_code = run_backup(args)
         self.assertEqual(exit_code, 0)
         report = json.loads((self.output_dir / 'backup-report.json').read_text(encoding='utf-8'))
-        return Path(report['artifact']['path']), Path(report['artifact']['metadata_path'])
+        artifact = report['artifacts'][0]
+        return Path(artifact['path']), Path(artifact['metadata_path'])
 
-    def test_verify_artifact_validates_existing_backup(self):
-        artifact_path, metadata_path = self._run_backup()
-        self.verify_policy_path.write_text(self.backup_policy_path.read_text(encoding='utf-8') + textwrap.dedent(f'''
-
-            artifact:
-              output_dir: {self.output_dir}
-              path: {artifact_path}
-              metadata_path: {metadata_path}
-        '''), encoding='utf-8')
-        # fix duplicated key by replacing final artifact block cleanly
+    def _write_verify_policy(self, artifact_path: Path, metadata_path: Path):
         self.verify_policy_path.write_text(textwrap.dedent(f'''
             project:
               name: cargadores
@@ -128,11 +119,6 @@ class VerifyArtifactCommandTests(unittest.TestCase):
             resource:
               name: mysql-main
               type: mysql
-              connection:
-                host: 127.0.0.1
-                port: 3306
-                database: app
-                username: root
 
             artifact:
               output_dir: {self.output_dir}
@@ -147,8 +133,6 @@ class VerifyArtifactCommandTests(unittest.TestCase):
               warn_free_space_below_mb: 2
               connectivity_timeout_sec: 1
               require_tools:
-                - mysql_query_client
-                - mysql_dump_client
                 - gzip_provider
                 - hash_provider
 
@@ -156,6 +140,10 @@ class VerifyArtifactCommandTests(unittest.TestCase):
               telegram:
                 enabled: false
         '''), encoding='utf-8')
+
+    def test_verify_artifact_validates_existing_backup(self):
+        artifact_path, metadata_path = self._run_backup()
+        self._write_verify_policy(artifact_path, metadata_path)
 
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.verify_policy_path))
         original_path = os.environ.get('PATH', '')
@@ -164,56 +152,24 @@ class VerifyArtifactCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
-        self.assertEqual(report['command'], 'verify-artifact')
-        self.assertEqual(report['status'], 'OK')
-        self.assertEqual(report['artifact']['path'], str(artifact_path))
-        checks = {c['id']: c for c in report['checks']}
+        self.assertEqual(report['metadata']['command'], 'verify-artifact')
+        self.assertEqual(report['final_status'], 'OK')
+        self.assertEqual(report['artifacts'][0]['path'], str(artifact_path))
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
         self.assertEqual(checks['artifact.file.exists']['status'], 'OK')
         self.assertEqual(checks['artifact.gzip.valid']['status'], 'OK')
         self.assertEqual(checks['artifact.sha256.match']['status'], 'OK')
         self.assertEqual(checks['artifact.metadata.consistency']['status'], 'OK')
+        self.assertNotIn('status', report)
+        self.assertNotIn('artifact', report)
+        self.assertNotIn('checks', report)
 
     def test_verify_artifact_detects_sha_mismatch(self):
         artifact_path, metadata_path = self._run_backup()
         metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
         metadata['sha256'] = '0' * 64
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
-
-        self.verify_policy_path.write_text(textwrap.dedent(f'''
-            project:
-              name: cargadores
-
-            resource:
-              name: mysql-main
-              type: mysql
-              connection:
-                host: 127.0.0.1
-                port: 3306
-                database: app
-                username: root
-
-            artifact:
-              output_dir: {self.output_dir}
-              path: {artifact_path}
-              metadata_path: {metadata_path}
-
-            runtime:
-              lock_dir: {self.lock_dir}
-
-            prechecks:
-              require_free_space_mb: 1
-              warn_free_space_below_mb: 2
-              connectivity_timeout_sec: 1
-              require_tools:
-                - mysql_query_client
-                - mysql_dump_client
-                - gzip_provider
-                - hash_provider
-
-            notifications:
-              telegram:
-                enabled: false
-        '''), encoding='utf-8')
+        self._write_verify_policy(artifact_path, metadata_path)
 
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.verify_policy_path))
         original_path = os.environ.get('PATH', '')
@@ -222,9 +178,46 @@ class VerifyArtifactCommandTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
         report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
-        checks = {c['id']: c for c in report['checks']}
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
         self.assertEqual(checks['artifact.sha256.match']['status'], 'ERROR')
-        self.assertEqual(report['status'], 'ERROR')
+        self.assertEqual(report['final_status'], 'ERROR')
+
+    def test_verify_artifact_rejects_removed_policy_aliases(self):
+        self.verify_policy_path.write_text(textwrap.dedent(f'''
+            project:
+              name: cargadores
+
+            resource:
+              name: mysql-main
+              type: mysql
+
+            artifact:
+              output_dir: {self.output_dir}
+              verify_path: removed.sql.gz
+              verify_metadata_path: removed.sql.gz.metadata.json
+
+            runtime:
+              lock_dir: {self.lock_dir}
+
+            prechecks:
+              require_free_space_mb: 1
+
+            notifications:
+              telegram:
+                enabled: false
+        '''), encoding='utf-8')
+
+        args = argparse.Namespace(env=str(self.env_path), policy=str(self.verify_policy_path))
+        exit_code = run_verify_artifact(args)
+
+        self.assertEqual(exit_code, 2)
+        report = json.loads((self.output_dir / 'verify-artifact-report.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['final_status'], 'ERROR')
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
+        self.assertEqual(checks['core.config.unsupported']['status'], 'ERROR')
+        self.assertIn('artifact.verify_path', checks['core.config.unsupported']['message'])
+        self.assertIn('artifact.verify_metadata_path', checks['core.config.unsupported']['message'])
+        self.assertEqual(checks['core.config.required']['status'], 'ERROR')
 
 
 if __name__ == '__main__':
