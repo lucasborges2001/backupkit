@@ -208,42 +208,42 @@ class RestoreTestCommandTests(unittest.TestCase):
     def _run_restore(self, restore_test_yaml: str):
         artifact_path, metadata_path = self._run_backup()
         restore_block = textwrap.indent(textwrap.dedent(restore_test_yaml).strip(), '  ')
-        self.restore_policy_path.write_text(textwrap.dedent(f'''
-            project:
-              name: cargadores
+        policy_text = f'''project:
+  name: cargadores
 
-            resource:
-              name: mysql-main
-              type: mysql
-              connection:
-                host: 127.0.0.1
-                port: 3306
-                username: root
+resource:
+  name: mysql-main
+  type: mysql
+  connection:
+    host: 127.0.0.1
+    port: 3306
+    username: root
 
-            artifact:
-              output_dir: {self.output_dir}
-              path: {artifact_path}
-              metadata_path: {metadata_path}
+artifact:
+  output_dir: {self.output_dir}
+  path: {artifact_path}
+  metadata_path: {metadata_path}
 
-            restore_test:
-            {restore_block}
+restore_test:
+{restore_block}
 
-            runtime:
-              lock_dir: {self.lock_dir}
+runtime:
+  lock_dir: {self.lock_dir}
 
-            prechecks:
-              require_free_space_mb: 1
-              warn_free_space_below_mb: 2
-              connectivity_timeout_sec: 1
-              require_tools:
-                - mysql_query_client
-                - gzip_provider
-                - hash_provider
+prechecks:
+  require_free_space_mb: 1
+  warn_free_space_below_mb: 2
+  connectivity_timeout_sec: 1
+  require_tools:
+    - mysql_query_client
+    - gzip_provider
+    - hash_provider
 
-            notifications:
-              telegram:
-                enabled: false
-        '''), encoding='utf-8')
+notifications:
+  telegram:
+    enabled: false
+'''
+        self.restore_policy_path.write_text(policy_text, encoding='utf-8')
 
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.restore_policy_path))
         with patch.dict(os.environ, self._env(), clear=False):
