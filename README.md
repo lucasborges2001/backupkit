@@ -239,6 +239,48 @@ La sección `retention` permite:
 - todos los comandos comparten validación, lock, reporte, retención y notificación;
 - `restore-test` ejecuta validators declarativos sin introducir lógica de dominio en el core.
 
+## Integración como submódulo
+
+El repositorio expone una superficie pública mínima para hosts PHP:
+
+```text
+module.php                         -> backupkit.manifest.v1
+back/bootstrap.php                 -> health y lectura read-only
+tests/fixtures/precheck-report.json -> fixture de integración
+tests/test_php_contract.php        -> smoke standalone
+```
+
+Contrato de integración:
+
+```text
+nombre: backupkit
+ruta: submodules/backupkit
+tier esperado: tooling-server-backup
+app deploy: no
+preflight general: no bloqueante
+HTTP writes: no
+SuperAdmin propio: no
+```
+
+El bootstrap permite validar y resumir reportes `v2`, pero no expone funciones para ejecutar el CLI, editar policies, borrar artefactos o restaurar bases.
+
+Validación local:
+
+```bash
+php -l module.php
+php -l back/bootstrap.php
+php -l tests/test_php_contract.php
+php tests/test_php_contract.php
+```
+
+Resultado esperado:
+
+```text
+BACKUPKIT_PHP_CONTRACT_PASS
+```
+
+El contrato completo está en [`docs/pruebas-integration.md`](docs/pruebas-integration.md). Los cambios todavía requeridos en el host están separados en [`docs/pendientes/pruebas-host-integration.md`](docs/pendientes/pruebas-host-integration.md).
+
 ## Fuera del contrato actual
 
 - motores distintos de MySQL;
