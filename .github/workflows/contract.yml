@@ -1,0 +1,42 @@
+name: BackupKit contracts
+
+on:
+  push:
+    branches:
+      - main
+      - agent/**
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Python and PHP contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile Python
+        run: python -m compileall -q core adapters tests
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Lint PHP integration contract
+        run: |
+          php -l module.php
+          php -l back/bootstrap.php
+          php -l tests/test_php_contract.php
+
+      - name: Run PHP integration smoke
+        run: php tests/test_php_contract.php
