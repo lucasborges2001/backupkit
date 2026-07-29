@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from core.cli import write_report
-from core.result import CheckResult, RunReport, ArtifactMetadata
+from core.result import ArtifactMetadata, CheckResult, RunReport
 
 
 class ReportModelTests(unittest.TestCase):
@@ -43,19 +43,22 @@ class ReportModelTests(unittest.TestCase):
         self.assertEqual(phase['id'], 'precheck')
         self.assertEqual(phase['status'], 'OK')
         self.assertEqual(phase['summary']['counts']['total'], 1)
-        self.assertEqual(
-            set(phase['evidence']),
-            {'checks', 'artifacts', 'restore_test', 'validators', 'notifications', 'housekeeping'},
-        )
+        self.assertEqual(set(phase['evidence']), {'checks', 'restore_test'})
         self.assertEqual(phase['evidence']['checks'][0]['id'], 'core.config.required')
-        self.assertEqual(phase['evidence']['artifacts'], [])
         self.assertEqual(phase['evidence']['restore_test'], {})
-        self.assertEqual(phase['evidence']['validators'], [])
-        self.assertEqual(phase['evidence']['notifications'][0]['channel'], 'telegram')
-        self.assertEqual(phase['evidence']['housekeeping'], {})
+        self.assertEqual(payload['artifacts'], [])
+        self.assertEqual(payload['validators'], [])
         self.assertEqual(payload['notifications'][0]['channel'], 'telegram')
         self.assertEqual(payload['housekeeping'], {})
         self.assertIn('final_summary', payload)
+
+        duplicated_evidence_fields = {
+            'artifacts',
+            'validators',
+            'notifications',
+            'housekeeping',
+        }
+        self.assertTrue(duplicated_evidence_fields.isdisjoint(phase['evidence']))
 
         legacy_fields = {
             'project',
@@ -74,7 +77,7 @@ class ReportModelTests(unittest.TestCase):
         }
         self.assertTrue(legacy_fields.isdisjoint(payload))
 
-    def test_report_surfaces_artifacts_and_validators_in_pipeline_arrays(self):
+    def test_report_exposes_each_restore_concept_once(self):
         report = RunReport(project='demo', resource='mysql-main', resource_type='mysql', command='restore-test')
         report.add(CheckResult('adapter.mysql.restore.import', 'OK', 'blocking', 'restore ok'))
         report.set_artifact(ArtifactMetadata.from_values(
@@ -109,10 +112,14 @@ class ReportModelTests(unittest.TestCase):
         self.assertEqual(payload['artifacts'][0]['engine'], 'mysql')
         self.assertEqual(len(payload['validators']), 1)
         self.assertEqual(payload['validators'][0]['id'], 'users_non_zero')
+
         evidence = payload['phases'][0]['evidence']
         self.assertEqual(evidence['restore_test']['database'], 'bkrt_demo')
-        self.assertEqual(evidence['validators'][0]['id'], 'users_non_zero')
-        self.assertEqual(evidence['artifacts'][0]['engine'], 'mysql')
+        self.assertNotIn('validator_results', evidence['restore_test'])
+        self.assertNotIn('artifacts', evidence)
+        self.assertNotIn('validators', evidence)
+        self.assertNotIn('notifications', evidence)
+        self.assertNotIn('housekeeping', evidence)
 
     def test_write_report_writes_strict_precheck_report_json(self):
         report = RunReport(project='demo', resource='mysql-main', resource_type='mysql', command='precheck')
