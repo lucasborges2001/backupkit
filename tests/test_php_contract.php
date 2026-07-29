@@ -32,6 +32,19 @@ backupkit_test_assert(($manifest['capabilities']['http_writes'] ?? true) === fal
 backupkit_test_assert(($manifest['superadmin']['enabled'] ?? true) === false, 'SuperAdmin must remain disabled');
 backupkit_test_assert(($manifest['contracts']['writes'] ?? null) === [], 'host write contracts must be empty');
 
+$deployment = $manifest['deployment'] ?? null;
+backupkit_test_assert(is_array($deployment), 'deployment contract must exist');
+backupkit_test_assert(($deployment['contract'] ?? null) === 'backupkit.deploy.v1', 'deploy contract mismatch');
+backupkit_test_assert(($deployment['profile'] ?? null) === 'server', 'deploy profile must be server');
+backupkit_test_assert(($deployment['module_manifest'] ?? null) === 'deploy/module.manifest.json', 'module deploy manifest mismatch');
+backupkit_test_assert(($deployment['server_manifest'] ?? null) === 'deploy/server.manifest.json', 'server deploy manifest mismatch');
+backupkit_test_assert(($deployment['include_in_app_deploy'] ?? true) === false, 'BackupKit must not enter app deploy');
+backupkit_test_assert(($deployment['requires_public_html'] ?? true) === false, 'BackupKit deploy must not require public_html');
+backupkit_test_assert(($deployment['base_runtime_dependency'] ?? true) === false, 'Base must not be a runtime dependency');
+backupkit_test_assert(in_array('backupkit.deploy.v1', $manifest['contracts']['readonly'] ?? [], true), 'deploy readonly contract missing');
+backupkit_test_assert(is_file($root . '/' . $deployment['module_manifest']), 'module deploy manifest must exist');
+backupkit_test_assert(is_file($root . '/' . $deployment['server_manifest']), 'server deploy manifest must exist');
+
 $fixture = $root . '/tests/fixtures/precheck-report.json';
 $report = backupkit_report_load($fixture);
 $validation = backupkit_report_validate($report);
