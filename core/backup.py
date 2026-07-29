@@ -17,9 +17,8 @@ def build_backup_basename(project: str, resource: str, timestamp_slug: str) -> s
     return f"{safe_project}__{safe_resource}__{timestamp_slug}.sql.gz"
 
 
-
 def build_artifact_metadata(*, artifact_path: str | Path, engine: str, resource: str, project: str, started_at, finished_at, status: str):
-    artifact_path = Path(artifact_path)
+    artifact_path = Path(artifact_path).expanduser().resolve()
     return ArtifactMetadata.from_values(
         path=artifact_path,
         size_bytes=artifact_path.stat().st_size,
@@ -31,4 +30,3 @@ def build_artifact_metadata(*, artifact_path: str | Path, engine: str, resource:
         duration_sec=round((finished_at - started_at).total_seconds(), 3),
         status=status,
     )
-
