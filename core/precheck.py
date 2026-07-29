@@ -18,6 +18,11 @@ MYSQL_RESTORE_TEST_REQUIRED_PATHS = [
     "resource.connection.username",
 ]
 
+UNSUPPORTED_ARTIFACT_FIELDS = (
+    "verify_path",
+    "verify_metadata_path",
+)
+
 
 def required_paths_for_resource(resource_type: str, command: str):
     base = [
@@ -44,7 +49,23 @@ def validate_required_config(config: dict, report: RunReport, command: str):
     resource_type = deep_get(policy, "resource.type")
     missing = [path for path in required_paths_for_resource(resource_type, command) if deep_get(policy, path) in (None, "")]
     artifact_cfg = policy.get("artifact", {})
-    if command in {"verify-artifact", "restore-test"} and not (artifact_cfg.get("path") or artifact_cfg.get("verify_path") or artifact_cfg.get("metadata_path") or artifact_cfg.get("verify_metadata_path")):
+
+    unsupported = [
+        f"artifact.{field}"
+        for field in UNSUPPORTED_ARTIFACT_FIELDS
+        if field in artifact_cfg
+    ]
+    if unsupported:
+        report.add(CheckResult(
+            "core.config.unsupported",
+            "ERROR",
+            "blocking",
+            "Unsupported policy fields: "
+            + ", ".join(unsupported)
+            + "; use artifact.path and artifact.metadata_path",
+        ))
+
+    if command in {"verify-artifact", "restore-test"} and not (artifact_cfg.get("path") or artifact_cfg.get("metadata_path")):
         missing.append("artifact.path|artifact.metadata_path")
     if command == 'restore-test':
         restore_cfg = policy.get('restore_test', {})
