@@ -1,6 +1,14 @@
-# Policy actual soportada
+# Policy soportada
 
 Contrato vigente para `backupkit precheck`, `backupkit backup`, `backupkit verify-artifact` y `backupkit restore-test`.
+
+## Principios
+
+- cada concepto tiene un único nombre;
+- no existen aliases de configuración;
+- los campos requeridos dependen del comando y del adapter;
+- las rutas relativas de artefactos se resuelven respecto de `artifact.output_dir`;
+- los paths registrados por artefactos nuevos son absolutos.
 
 ## Ejemplo válido para backup
 
@@ -43,6 +51,8 @@ notifications:
 
 ## Ejemplo válido para verify-artifact
 
+Las rutas se expresan como nombres relativos a `artifact.output_dir`:
+
 ```yaml
 project:
   name: mysql-basic
@@ -53,8 +63,8 @@ resource:
 
 artifact:
   output_dir: ./var/output
-  path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz
-  metadata_path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
+  path: mysql-basic__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
 
 runtime:
   lock_dir: ./var/locks
@@ -73,6 +83,15 @@ notifications:
       - ERROR
 ```
 
+También se pueden usar paths absolutos:
+
+```yaml
+artifact:
+  output_dir: /srv/backupkit/output
+  path: /srv/backupkit/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: /srv/backupkit/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
+```
+
 ## Ejemplo válido para restore-test
 
 ```yaml
@@ -89,8 +108,8 @@ resource:
 
 artifact:
   output_dir: ./var/output
-  path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz
-  metadata_path: ./var/output/mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
+  path: mysql-basic__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
 
 restore_test:
   database_prefix: bkrt
@@ -132,100 +151,132 @@ notifications:
       - ERROR
 ```
 
-## Secciones soportadas hoy
+## Secciones soportadas
 
 ### `project`
 
-- `name` requerido
+- `name`: requerido.
 
 ### `resource`
 
-- `name` requerido
-- `type` requerido
-- `connection.host` requerido para `precheck`, `backup` y `restore-test` con MySQL
-- `connection.port` requerido para `precheck`, `backup` y `restore-test` con MySQL
-- `connection.database` requerido para `precheck` y `backup` con MySQL
-- `connection.username` requerido para `precheck`, `backup` y `restore-test` con MySQL
+- `name`: requerido;
+- `type`: requerido;
+- `connection.host`: requerido para `precheck`, `backup` y `restore-test` con MySQL;
+- `connection.port`: requerido para `precheck`, `backup` y `restore-test` con MySQL;
+- `connection.database`: requerido para `precheck` y `backup` con MySQL;
+- `connection.username`: requerido para `precheck`, `backup` y `restore-test` con MySQL.
 
 ### `artifact`
 
-- `output_dir` requerido
-- `path` opcional para `backup`
-- `path` o `metadata_path` requerido para `verify-artifact`
-- `path` o `metadata_path` requerido para `restore-test`
-- `verify_path` y `verify_metadata_path` aceptados como alias explícitos para `verify-artifact` y `restore-test`
+- `output_dir`: requerido;
+- `path`: requerido para `verify-artifact` y `restore-test` cuando no se informa `metadata_path`;
+- `metadata_path`: requerido para `verify-artifact` y `restore-test` cuando no se informa `path`.
+
+Resolución de rutas:
+
+```text
+path absoluto -> se usa directamente
+path relativo -> artifact.output_dir / path
+```
+
+Si solo se informa `path`, el sidecar se infiere agregando `.metadata.json`.
+
+Si solo se informa `metadata_path`, el artefacto se resuelve desde `path` dentro del sidecar.
+
+Campos rechazados:
+
+```text
+artifact.verify_path
+artifact.verify_metadata_path
+```
+
+Su presencia produce el check bloqueante:
+
+```text
+core.config.unsupported=ERROR
+```
 
 ### `restore_test`
 
-- `database_prefix` opcional, default `bkrt`
-- `critical_tables` opcional, lista de nombres de tablas a exigir
-- `smoke_queries` opcional, lista de SQL simples a ejecutar sobre la base restaurada
-- `validators` opcional, lista de validators SQL declarativos a ejecutar sobre la base restaurada
-  - `id` requerido y único
-  - `description` opcional
-  - `sql` requerido
-  - `expected.rule` requerido, soporta `equals`, `greater_than`, `less_than`, `zero`, `non_zero`
-  - `expected.value` requerido solo para `equals`, `greater_than`, `less_than`
-  - `severity` requerida, soporta `error` y `warning`
+- `database_prefix`: opcional, default `bkrt`;
+- `critical_tables`: opcional, lista de tablas requeridas;
+- `smoke_queries`: opcional, lista de SQL simples;
+- `validators`: opcional, lista de validators SQL declarativos.
+
+Cada validator requiere:
+
+- `id` único;
+- `sql`;
+- `expected.rule`;
+- `severity`: `error` o `warning`.
+
+Reglas soportadas:
+
+- `equals`;
+- `greater_than`;
+- `less_than`;
+- `zero`;
+- `non_zero`.
+
+`expected.value` es requerido para `equals`, `greater_than` y `less_than`.
 
 ### `runtime`
 
-- `lock_dir` opcional
-- si no existe, se crea
+- `lock_dir`: opcional;
+- si no existe, se crea.
 
 ### `prechecks`
 
-- `require_free_space_mb` requerido
-- `warn_free_space_below_mb` opcional
-- `connectivity_timeout_sec` opcional
-- `require_tools` opcional pero recomendado
+- `require_free_space_mb`: requerido;
+- `warn_free_space_below_mb`: opcional;
+- `connectivity_timeout_sec`: opcional;
+- `require_tools`: opcional, recomendado para validar el entorno completo.
 
 ### `notifications.telegram`
 
-- `enabled` opcional
-- `notify_on` opcional
+- `enabled`: opcional;
+- `notify_on`: opcional.
 
 ### `retention`
 
-- `enabled` opcional, default `false`
-- `keep_success` opcional, default `7`
-- `keep_non_success` opcional, default `5`
-- `delete_artifacts` opcional, default `true`
-- `delete_reports` opcional, default `true`
-- `require_verified_newer_backup` opcional, default `true`
-- `protect_last_known_valid` opcional, default `true`
-- `dry_run` opcional, default `false`
+- `enabled`: opcional, default `false`;
+- `keep_success`: opcional, default `7`;
+- `keep_non_success`: opcional, default `5`;
+- `delete_artifacts`: opcional, default `true`;
+- `delete_reports`: opcional, default `true`;
+- `require_verified_newer_backup`: opcional, default `true`;
+- `protect_last_known_valid`: opcional, default `true`;
+- `dry_run`: opcional, default `false`.
 
 ## Variables de `.env`
 
-### Requeridas para backup y restore MySQL real
+### Requeridas para backup y restore MySQL
 
-- `MYSQL_PASSWORD`
+- `MYSQL_PASSWORD`.
 
 ### Para verify-artifact
 
-- ninguna adicional obligatoria respecto del artefacto en sí
+No requiere variables adicionales para validar un artefacto local.
 
 ### Opcionales
 
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
+- `TELEGRAM_BOT_TOKEN`;
+- `TELEGRAM_CHAT_ID`.
 
-## Herramientas esperadas
+## Herramientas conocidas
 
-Tool ids conocidos:
+- `mysql_query_client`;
+- `mysql_dump_client`;
+- `gzip_provider`;
+- `hash_provider`.
 
-- `mysql_query_client`
-- `mysql_dump_client`
-- `gzip_provider`
-- `hash_provider`
+`backup` ejecuta `mysqldump` y genera gzip/SHA-256 desde Python. `verify-artifact` valida gzip y SHA-256 desde Python. `restore-test` envía el SQL restaurado al cliente `mysql` mediante stdin.
 
-Nota: hoy `backup` usa `mysqldump` de forma directa para el dump y genera gzip/sha256 desde Python estándar. `verify-artifact` valida gzip y sha256 desde Python estándar. `restore-test` restaura desde Python hacia `mysql` usando stdin. Mantener los tool ids en precheck ayuda a verificar el entorno operativo completo.
+## Fuera del contrato actual
 
-## Lo que no forma parte del contrato vigente
-
-Todavía no se soportan como fases reales ni como schema operativo:
-
-- validators de negocio complejos o específicos de dominio
-- múltiples motores además de MySQL
-- baseline histórico
+- validators de negocio complejos;
+- motores distintos de MySQL;
+- baseline histórico;
+- cifrado;
+- upload externo;
+- configuración mediante nombres alternativos.
