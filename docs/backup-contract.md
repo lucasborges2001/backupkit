@@ -2,30 +2,34 @@
 
 ## Objetivo
 
-Ejecutar un backup real del recurso configurado y dejar un artefacto verificable, pero sin entrar todavía en restore test ni validators.
+Ejecutar un backup real del recurso configurado y producir un artefacto verificable con sidecar de metadata.
 
-## Flujo actual para MySQL
+## Flujo MySQL
 
-1. validaciones base del core
-2. lock por `project/resource`
-3. prechecks del adapter MySQL
-4. `mysqldump`
-5. compresión gzip
-6. cálculo de sha256
-7. escritura de metadata sidecar
-8. escritura de `backup-report.json`
+1. valida la policy;
+2. adquiere el lock `project/resource`;
+3. ejecuta prechecks del adapter;
+4. ejecuta `mysqldump`;
+5. comprime la salida con gzip;
+6. calcula SHA-256;
+7. escribe metadata sidecar;
+8. escribe el reporte `v2`;
+9. ejecuta housekeeping cuando está habilitado;
+10. intenta notificar según policy.
 
 ## Archivos generados
 
-- `backup-report.json`
-- `<project>__<resource>__<timestamp>.sql.gz`
-- `<project>__<resource>__<timestamp>.sql.gz.metadata.json`
+- `backup-report.json`;
+- `<project>__<resource>__<timestamp>__backup-report.json`;
+- `<project>__<resource>__<timestamp>.sql.gz`;
+- `<project>__<resource>__<timestamp>.sql.gz.metadata.json`.
 
-## Contrato mínimo de artefacto
+## Contrato del artefacto
 
 ```json
 {
-  "path": "./var/output/cargadores__mysql-main__20260330T120000Z.sql.gz",
+  "path": "/srv/backupkit/output/cargadores__mysql-main__20260330T120000Z.sql.gz",
+  "metadata_path": "/srv/backupkit/output/cargadores__mysql-main__20260330T120000Z.sql.gz.metadata.json",
   "size_bytes": 123456,
   "sha256": "...",
   "timestamp": "2026-03-30T12:00:00+00:00",
@@ -37,24 +41,67 @@ Ejecutar un backup real del recurso configurado y dejar un artefacto verificable
 }
 ```
 
-## Reporte de backup
+`path` y `metadata_path` se registran como paths absolutos.
 
-Además de los campos base del reporte, `backup-report.json` incluye `artifact` cuando la corrida genera artefacto exitosamente.
+## Reporte de corrida
 
-## Checks actuales esperables
+Rutas canónicas:
 
-- `adapter.mysql.backup.dump`
-- `adapter.mysql.backup.sha256`
-- `adapter.mysql.backup.metadata`
+```text
+metadata.command = backup
+final_status
+artifacts[0]
+phases[0].evidence.checks[]
+housekeeping
+notifications[]
+```
 
-## Relación con `verify-artifact`
+No se publican `status`, `artifact` ni `checks` como campos top-level.
 
-El resultado de `backup` deja todo lo necesario para que una corrida posterior de `verify-artifact` valide técnicamente el artefacto y su sidecar.
+## Checks esperables
 
-## No cubre todavía
+### Core
 
-- restore test
-- validators
-- retención
-- cifrado
-- upload externo
+- `core.config.required`;
+- `core.config.unsupported` cuando corresponda;
+- `core.lock.available`;
+- `core.output_dir.writable`;
+- `core.free_space`;
+- `core.tools.available`;
+- `core.retention.housekeeping` cuando retention está habilitado;
+- checks de notificación.
+
+### Adapter MySQL
+
+- `adapter.mysql.connectivity`;
+- `adapter.mysql.auth`;
+- `adapter.mysql.backup.dump`;
+- `adapter.mysql.backup.sha256`;
+- `adapter.mysql.backup.metadata`.
+
+## Relación con otros comandos
+
+`backup` produce la entrada requerida por:
+
+- `verify-artifact`;
+- `restore-test`.
+
+`backup` no ejecuta automáticamente `restore-test`. Cada comando representa una corrida y una fase explícita diferente.
+
+## Invariantes
+
+- no publica un artefacto final si `mysqldump` falla;
+- usa un archivo temporal `.part` antes del rename final;
+- no deja el `.part` ante error controlado;
+- el sidecar corresponde al artefacto final;
+- el reporte siempre respeta `report_version = 2`;
+- el código de salida deriva de `final_status`.
+
+## Fuera del contrato actual
+
+- múltiples motores además de MySQL;
+- cifrado;
+- upload externo;
+- backup schema-only;
+- exclusión declarativa de tablas;
+- restore automático dentro del comando `backup`.
