@@ -1,6 +1,6 @@
 # backupkit
 
-Starter operativo de `backupkit` con **precheck funcional**, **backup MySQL real**, **verificación técnica de artefacto**, **restore test real sobre base temporal MySQL** y **validators SQL declarativos ejecutados sobre la restauración temporal**.
+`backupkit` es un CLI operativo para ejecutar prechecks, backups MySQL reales, verificación técnica de artefactos y restore tests sobre bases temporales.
 
 ## Capacidades actuales
 
@@ -9,81 +9,46 @@ Starter operativo de `backupkit` con **precheck funcional**, **backup MySQL real
   - `backupkit backup`
   - `backupkit verify-artifact`
   - `backupkit restore-test`
-- `.env` + `policy.yml`
-- core reusable con registry de adapters
-- adapter MySQL inicial
-- reporte JSON por corrida
-- reportes históricos timestamped y rotación automática
-- metadata JSON por artefacto de backup
-- Telegram solo para `WARN` y `ERROR`
-- lock de ejecución por `project/resource`
+- configuración mediante `.env` y `policy.yml`;
+- core con registry de adapters;
+- adapter MySQL;
+- dump real con `mysqldump`;
+- compresión gzip y cálculo SHA-256;
+- metadata JSON por artefacto;
+- reportes JSON `report_version = 2`;
+- reportes históricos timestamped;
+- restore temporal con cleanup;
+- validators SQL declarativos;
+- retención y housekeeping;
+- Telegram para resultados `WARN` y `ERROR`;
+- lock por `project/resource`.
 
-## Qué soporta hoy
+## Contrato de dependencias
+
+El core de `backupkit` es standalone y no depende de repositorios host.
+
+```text
+backupkit core -> Python + herramientas declaradas por adapter
+backupkit core -X-> Pruebas
+backupkit core -X-> Base
+backupkit core -X-> otros módulos
+```
+
+Una interfaz web externa puede integrar sus reportes, pero no forma parte del CLI ni de su contrato de ejecución.
+
+## Comandos
 
 ### `backupkit precheck`
 
-Checks de:
-- config mínima
-- output dir escribible
-- espacio libre
-- herramientas requeridas
-- conectividad TCP al recurso
-- auth MySQL
+Valida:
 
-### `backupkit backup`
-
-Flujo real para MySQL:
-- validaciones base equivalentes a `precheck`
-- dump MySQL real con `mysqldump`
-- compresión gzip
-- cálculo de sha256
-- metadata del artefacto en sidecar JSON
-- integración con `backup-report.json`
-
-### `backupkit verify-artifact`
-
-Validación técnica del artefacto generado:
-- archivo existe
-- archivo no vacío
-- gzip válido si aplica
-- sha256 presente y consistente
-- metadata presente y parseable
-- metadata coherente con artefacto, engine, project y resource
-- integración con `verify-artifact-report.json`
-
-### `backupkit restore-test`
-
-Restore real para MySQL sobre base temporal efímera:
-- reutiliza `verify-artifact` antes de restaurar
-- crea una base temporal con nombre único
-- restaura el dump `.sql.gz` en esa base
-- valida tablas críticas configurables
-- ejecuta smoke queries configurables
-- ejecuta validators SQL declarativos sobre la base restaurada
-- clasifica fallos en `warning` o `error` según policy
-- limpia con `DROP DATABASE IF EXISTS` incluso ante error
-- integra resultado y cleanup en `restore-test-report.json`
-
-### `retention / housekeeping`
-
-Control de crecimiento histórico del output local:
-- bloque `retention` declarativo en `policy.yml`
-- identificación de **corridas lógicas** (artifact + metadata + reportes)
-- política por cantidad de backups exitosos y fallidos a conservar
-- protección automática del **último backup válido conocido**
-- modo `dry_run` para auditoría
-- reporte detallado de decisiones y archivos eliminados/conservados en el JSON de salida
-
-## Qué no trae todavía
-
-- validators de negocio complejos o específicos de dominio
-- múltiples motores además de MySQL
-- baseline histórico
-- pipeline final completo
-
-## Uso
-
-### Precheck
+- configuración mínima;
+- directorio de salida escribible;
+- espacio libre;
+- herramientas requeridas;
+- lock disponible;
+- adapter soportado;
+- conectividad y autenticación MySQL.
 
 ```bash
 ./bin/backupkit precheck \
@@ -91,7 +56,19 @@ Control de crecimiento histórico del output local:
   --policy ./examples/mysql-basic/backup/backup.policy.yml
 ```
 
-### Backup
+### `backupkit backup`
+
+Flujo MySQL:
+
+1. ejecuta validaciones base;
+2. adquiere el lock `project/resource`;
+3. ejecuta `mysqldump`;
+4. comprime con gzip;
+5. calcula SHA-256;
+6. escribe el sidecar de metadata;
+7. escribe el reporte de corrida;
+8. aplica housekeeping si está habilitado;
+9. intenta notificar según policy.
 
 ```bash
 ./bin/backupkit backup \
@@ -99,7 +76,15 @@ Control de crecimiento histórico del output local:
   --policy ./examples/mysql-basic/backup/backup.policy.yml
 ```
 
-### Verify artifact
+### `backupkit verify-artifact`
+
+Valida:
+
+- existencia y tamaño del artefacto;
+- integridad gzip;
+- sidecar parseable;
+- SHA-256;
+- coherencia de path, tamaño, engine, project y resource.
 
 ```bash
 ./bin/backupkit verify-artifact \
@@ -107,34 +92,18 @@ Control de crecimiento histórico del output local:
   --policy ./examples/mysql-basic/backup/verify.policy.yml
 ```
 
-#
-## Reporte JSON de pipeline
+### `backupkit restore-test`
 
-Desde `report_version = 2`, los reportes pasan a exponer un modelo de pipeline con:
+Ejecuta un restore real sobre una base temporal MySQL:
 
-- `metadata`
-- `final_status`
-- `phases[]`
-- `artifacts[]`
-- `validators[]`
-- `notifications[]`
-- `final_summary`
-
-Se mantiene compatibilidad razonable con el formato anterior: siguen presentes `status`, `summary`, `checks`, `artifact`, `restore_test` y `duration_sec`.
-
-Ver detalle del contrato en `docs/report-format.md`.
-
-## Nota de migración
-
-Si alguna integración consumía el reporte viejo:
-
-- `status` sigue existiendo, pero el campo canónico nuevo es `final_status`
-- `checks[]` sigue existiendo, pero ahora la vista estructural recomendada es `phases[0].evidence.checks[]`
-- `artifact` sigue existiendo, pero la vista expandible nueva es `artifacts[]`
-- `restore_test.validator_results` sigue existiendo, pero la vista plana nueva es `validators[]`
-- `duration_sec` sigue existiendo, pero la métrica operativa nueva es `metadata.duration_ms`
-
-## Restore test
+- verifica primero el artefacto;
+- crea una base con nombre único;
+- restaura el dump `.sql.gz`;
+- valida tablas críticas;
+- ejecuta smoke queries;
+- ejecuta validators SQL declarativos;
+- clasifica resultados como `OK`, `WARN` o `ERROR`;
+- ejecuta `DROP DATABASE IF EXISTS` en cleanup incluso ante error.
 
 ```bash
 ./bin/backupkit restore-test \
@@ -142,52 +111,139 @@ Si alguna integración consumía el reporte viejo:
   --policy ./examples/mysql-basic/backup/restore-test.policy.yml
 ```
 
+## Policy canónica
+
+Dentro de `artifact` existen únicamente estos nombres de entrada:
+
+- `output_dir`;
+- `path`;
+- `metadata_path`.
+
+`verify_path` y `verify_metadata_path` no forman parte del contrato y producen `core.config.unsupported=ERROR`.
+
+Semántica de rutas:
+
+- una ruta absoluta se usa directamente;
+- una ruta relativa se resuelve respecto de `artifact.output_dir`;
+- los artefactos y sidecars generados registran paths absolutos.
+
+Ver el contrato completo en [`docs/policy.md`](docs/policy.md).
+
+## Reporte JSON `v2`
+
+El reporte tiene una única forma canónica:
+
+```text
+report_version
+metadata
+final_status
+phases[]
+artifacts[]
+validators[]
+notifications[]
+housekeeping
+final_summary
+```
+
+Los checks y detalles específicos de la fase se consumen desde:
+
+```text
+phases[0].evidence.checks[]
+phases[0].evidence.restore_test
+```
+
+No se publican campos top-level alternativos como:
+
+```text
+status
+summary
+checks
+artifact
+restore_test
+duration_sec
+project
+resource
+command
+phase
+```
+
+Ejemplo mínimo de consumo:
+
+```python
+import json
+from pathlib import Path
+
+report = json.loads(Path('backup-report.json').read_text(encoding='utf-8'))
+
+assert report['report_version'] == 2
+status = report['final_status']
+command = report['metadata']['command']
+checks = report['phases'][0]['evidence']['checks']
+artifacts = report['artifacts']
+```
+
+Ver el schema documentado en [`docs/report-format.md`](docs/report-format.md).
+
+## Códigos de salida
+
+| Estado final | Código |
+|---|---:|
+| `OK` | `0` |
+| `WARN` | `1` |
+| `ERROR` | `2` |
+
 ## Salidas esperadas
 
 En `artifact.output_dir`:
 
-- `precheck-report.json`
-- `backup-report.json`
-- `verify-artifact-report.json`
-- `restore-test-report.json`
-- `<project>__<resource>__<timestamp>.sql.gz`
-- `<project>__<resource>__<timestamp>.sql.gz.metadata.json`
+- `precheck-report.json`;
+- `backup-report.json`;
+- `verify-artifact-report.json`;
+- `restore-test-report.json`;
+- `<project>__<resource>__<timestamp>__<command>-report.json`;
+- `<project>__<resource>__<timestamp>.sql.gz`;
+- `<project>__<resource>__<timestamp>.sql.gz.metadata.json`.
 
-## Contrato actual de artefacto
+## Contrato del sidecar de artefacto
 
-El sidecar metadata y el reporte incluyen al menos:
+El sidecar incluye:
 
-- `path`
-- `size_bytes`
-- `sha256`
-- `timestamp`
-- `engine`
-- `resource`
-- `project`
-- `duration_sec`
-- `status`
+- `path` absoluto;
+- `metadata_path` absoluto;
+- `size_bytes`;
+- `sha256`;
+- `timestamp`;
+- `engine`;
+- `resource`;
+- `project`;
+- `duration_sec`;
+- `status`.
 
-El reporte de `restore-test` agrega además:
+Este contrato es distinto del reporte de corrida `v2`; no deben mezclarse sus campos.
 
-- `restore_test.database`
-- `restore_test.cleanup_attempted`
-- `restore_test.cleanup_succeeded`
-- `restore_test.critical_tables`
-- `restore_test.smoke_queries`
-- `restore_test.validators`
-- `restore_test.validator_results`
-- `restore_test.validators_summary`
+## Retención y housekeeping
+
+La sección `retention` permite:
+
+- conservar cantidades diferentes de backups exitosos y no exitosos;
+- proteger el último backup válido conocido;
+- ejecutar auditoría mediante `dry_run`;
+- borrar artefactos y reportes de corridas elegibles;
+- incluir evidencia de decisiones en `housekeeping`.
 
 ## Diseño
 
-El core no queda acoplado a MySQL más de lo necesario:
+- el core selecciona el adapter mediante `resource.type`;
+- la lógica MySQL vive en `adapters/mysql`;
+- la verificación reusable de artefactos vive en `core/artifact.py`;
+- todos los comandos comparten validación, lock, reporte, retención y notificación;
+- `restore-test` ejecuta validators declarativos sin introducir lógica de dominio en el core.
 
-- el core resuelve el adapter por `resource.type`
-- `precheck`, `backup`, `verify-artifact` y `restore-test` comparten validaciones base y lock
-- la lógica de dump y restore real vive en el adapter MySQL
-- la lógica reusable de validación de artefactos vive en `core/artifact.py`
-- `restore-test` ya soporta validators SQL declarativos y deja abierto el camino para validators más ricos sin meter lógica de dominio en el core
+## Fuera del contrato actual
 
-## Notificación
-
-Telegram se envía una vez por corrida y solo si el estado final es `WARN` o `ERROR`.
+- motores distintos de MySQL;
+- validators de negocio complejos;
+- baseline histórico;
+- cifrado o upload externo de artefactos;
+- ejecución desde requests web;
+- interfaz SuperAdmin propia.
