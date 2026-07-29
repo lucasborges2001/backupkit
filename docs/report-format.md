@@ -1,39 +1,20 @@
-# Formato de reporte JSON
+# Formato de reporte JSON `v2`
 
-Desde `report_version = 2`, `backupkit` expone un reporte orientado a pipeline.
+`backupkit` expone un único contrato de reporte orientado a pipeline.
 
-## Objetivo
+## Invariante principal
 
-Representar una corrida operativa completa con:
+```text
+report_version = 2
+```
 
-- metadata general de ejecución
-- estado final consolidado
-- fases explícitas
-- artefactos producidos o verificados
-- resultados de validators
-- intentos de notificación
-- resumen humano utilizable en operación
+No existen campos top-level alternativos ni compatibilidad con el formato anterior.
 
-## Estructura
+## Estructura canónica
 
 ```json
 {
   "report_version": 2,
-  "project": "demo",
-  "resource": "mysql-main",
-  "resource_type": "mysql",
-  "command": "restore-test",
-  "phase": "restore-test",
-  "started_at": "2026-03-31T12:00:00+00:00",
-  "finished_at": "2026-03-31T12:00:03+00:00",
-  "duration_sec": 3.012,
-  "status": "WARN",
-  "summary": {
-    "OK": 10,
-    "WARN": 1,
-    "ERROR": 0,
-    "total": 11
-  },
   "metadata": {
     "project": "demo",
     "resource": "mysql-main",
@@ -78,111 +59,195 @@ Representar una corrida operativa completa con:
 }
 ```
 
-## Campos
+## Campos top-level
 
-### `metadata`
+El conjunto de campos es exacto:
 
-Describe la corrida de alto nivel:
+```text
+report_version
+metadata
+final_status
+phases
+artifacts
+validators
+notifications
+housekeeping
+final_summary
+```
 
-- `project`
-- `resource`
-- `resource_type`
-- `command`
-- `started_at`
-- `finished_at`
-- `duration_ms`
+Los arrays vacíos y objetos vacíos se conservan para mantener una forma estable.
 
-### `final_status`
+## `metadata`
 
-Estado final consolidado de la corrida.
+Describe la corrida completa:
 
-Regla actual:
+- `project`;
+- `resource`;
+- `resource_type`;
+- `command`;
+- `started_at`;
+- `finished_at`;
+- `duration_ms`.
 
-- `ERROR` si existe al menos un check con `status=ERROR`
-- `WARN` si no hay errores pero sí warnings
-- `OK` si no hay errores ni warnings
+`command` admite actualmente:
 
-### `phases[]`
+- `precheck`;
+- `backup`;
+- `verify-artifact`;
+- `restore-test`.
 
-Representa las fases explícitas del pipeline.
+## `final_status`
 
-En la implementación actual, cada comando genera una sola fase explícita:
+Estado consolidado:
 
-- `precheck`
-- `backup`
-- `verify-artifact`
-- `restore-test`
+- `ERROR`: existe al menos un check con `status=ERROR`;
+- `WARN`: no hay errores y existe al menos un warning;
+- `OK`: no hay errores ni warnings.
 
-Cada fase contiene:
+Códigos de salida:
 
-- `id`
-- `status`
-- `started_at`
-- `finished_at`
-- `duration_ms`
-- `summary`
-- `evidence`
+| `final_status` | Código |
+|---|---:|
+| `OK` | `0` |
+| `WARN` | `1` |
+| `ERROR` | `2` |
 
-### `artifacts[]`
+## `phases[]`
 
-Lista de artefactos asociados a la corrida.
+Cada comando genera actualmente una fase cuyo `id` coincide con el comando.
 
-Por ahora puede contener el artefacto principal (`backup` o `verify-artifact`).
+Campos de fase:
 
-### `validators[]`
+- `id`;
+- `status`;
+- `started_at`;
+- `finished_at`;
+- `duration_ms`;
+- `summary`;
+- `evidence`.
 
-Lista plana de resultados de validators declarativos SQL.
+### `summary`
 
-Solo aplica cuando se ejecuta `restore-test` y hay validators configurados.
+Contiene:
 
-### `notifications[]`
+- `human`: resumen legible;
+- `counts.ok`;
+- `counts.warn`;
+- `counts.error`;
+- `counts.total`.
 
-Lista de notificaciones intentadas por la corrida.
+### `evidence`
 
-Estructura actual:
+El objeto contiene siempre:
 
-- `channel`
-- `status`
-- `message`
-- `meta`
+- `checks[]`;
+- `artifacts[]`;
+- `restore_test`;
+- `validators[]`;
+- `notifications[]`;
+- `housekeeping`.
 
-### `housekeeping`
+`checks[]` es la fuente canónica de checks de ejecución.
 
-Detalle del proceso de retención ejecutado. Solo presente si `retention` está habilitado.
+`restore_test` queda vacío para comandos que no ejecutan restore.
 
-Estructura:
+## `artifacts[]`
 
-- `status`: `OK` | `WARN` | `SKIP`
-- `policy`: copia de la política aplicada
-- `discovered_runs[]`: lista de corridas encontradas en el output
-- `kept_runs[]`: corridas mantenidas por policy
-- `protected_runs[]`: corridas protegidas (ej: last known valid)
-- `deleted_runs[]`: corridas eliminadas
-- `skipped_deletions[]`: candidatos a borrado no ejecutados (ej: dry-run)
-- `summary`: conteos consolidados de la operación de housekeeping
+Lista plana de artefactos asociados a la corrida.
 
-### `final_summary`
+Para `backup` contiene el artefacto generado. Para `verify-artifact` y `restore-test` contiene el artefacto verificado cuando su metadata pudo parsearse.
 
-Resumen humano consolidado, pensado para operación rápida.
+Campos actuales de un artefacto:
 
-## Compatibilidad hacia atrás
+- `path`;
+- `metadata_path`;
+- `size_bytes`;
+- `sha256`;
+- `timestamp`;
+- `engine`;
+- `resource`;
+- `project`;
+- `duration_sec`;
+- `status`.
 
-Para no romper integraciones existentes, todavía se mantienen:
+`path` y `metadata_path` se registran como paths absolutos para artefactos nuevos.
 
-- `status`
-- `summary`
-- `checks`
-- `artifact`
-- `restore_test`
-- `duration_sec`
-- `project`, `resource`, `resource_type`, `command`, `phase`
+## `validators[]`
 
-La recomendación nueva es consumir primero:
+Lista plana de resultados de validators SQL declarativos.
 
-- `metadata`
-- `final_status`
-- `phases`
-- `artifacts`
-- `validators`
-- `notifications`
-- `final_summary`
+Se mantiene vacía salvo durante `restore-test` con validators configurados.
+
+Cada resultado puede incluir:
+
+- `id`;
+- `status`;
+- `severity`;
+- `message`;
+- `actual_value`;
+- datos de la regla evaluada.
+
+## `notifications[]`
+
+Lista de intentos de notificación:
+
+- `channel`;
+- `status`;
+- `message`;
+- `meta`.
+
+## `housekeeping`
+
+Detalle de retención. Es `{}` cuando `retention.enabled=false`.
+
+Cuando está habilitado incluye:
+
+- `status`;
+- `policy`;
+- `summary`;
+- `discovered_runs[]`;
+- `kept_runs[]`;
+- `protected_runs[]`;
+- `deleted_runs[]`;
+- `skipped_deletions[]`;
+- `failed_deletions[]` cuando corresponda.
+
+## `final_summary`
+
+Resumen humano consolidado para logs y operación rápida.
+
+No debe parsearse como fuente estructural; los consumidores deben usar los demás campos.
+
+## Campos que no forman parte de `v2`
+
+Los siguientes nombres no se publican en el nivel superior:
+
+```text
+project
+resource
+resource_type
+command
+phase
+started_at
+finished_at
+duration_sec
+status
+summary
+checks
+artifact
+restore_test
+```
+
+Equivalencias canónicas:
+
+| Concepto | Ruta `v2` |
+|---|---|
+| estado final | `final_status` |
+| comando | `metadata.command` |
+| duración | `metadata.duration_ms` |
+| checks | `phases[0].evidence.checks[]` |
+| artefactos | `artifacts[]` |
+| restore | `phases[0].evidence.restore_test` |
+| validators | `validators[]` |
+
+Estas son rutas contractuales, no aliases temporales.
