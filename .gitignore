@@ -18,6 +18,8 @@ env/
 build/
 dist/
 *.egg-info/
+var/build/
+releases/
 
 # Local runtime/output
 var/output/*
