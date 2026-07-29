@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "module": "backupkit",
+  "include": [
+    "module.php",
+    "back/**",
+    "bin/**",
+    "core/**",
+    "adapters/**",
+    "lib/**"
+  ],
+  "exclude": [
+    ".git/**",
+    ".github/**",
+    "docs/**",
+    "tests/**",
+    "examples/**",
+    "scripts/**",
+    "var/**",
+    "releases/**",
+    "**/__pycache__/**",
+    "**/*.pyc",
+    ".env",
+    ".env.*",
+    "*.log",
+    "*.zip"
+  ],
+  "required_paths": [
+    "module.php",
+    "back/bootstrap.php",
+    "bin/backupkit",
+    "core/cli.py",
+    "core/result.py",
+    "core/backup.py",
+    "adapters/mysql/adapter.py"
+  ],
+  "forbidden_paths": [
+    ".git",
+    ".github",
+    ".env",
+    "docs",
+    "tests",
+    "examples",
+    "scripts",
+    "var",
+    "releases",
+    "__pycache__"
+  ]
+}

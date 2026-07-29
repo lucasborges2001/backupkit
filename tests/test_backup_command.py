@@ -24,7 +24,7 @@ class BackupCommandTests(unittest.TestCase):
         self.lock_dir = self.root / 'locks'
         self.policy_path = self.root / 'backup.policy.yml'
         self.env_path = self.root / '.env.backup'
-        
+
         mysqldump_name = 'mysqldump.bat' if os.name == 'nt' else 'mysqldump'
         mysql_name = 'mysql.bat' if os.name == 'nt' else 'mysql'
         gzip_name = 'gzip.bat' if os.name == 'nt' else 'gzip'
@@ -103,7 +103,7 @@ class BackupCommandTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_run_backup_generates_gzip_metadata_and_report(self):
+    def test_run_backup_generates_gzip_metadata_and_strict_report(self):
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.policy_path))
         original_path = os.environ.get('PATH', '')
         with patch.dict(os.environ, {'PATH': f'{self.bin_dir}{os.pathsep}{original_path}'}):
@@ -115,12 +115,18 @@ class BackupCommandTests(unittest.TestCase):
         backup_report = self.output_dir / 'backup-report.json'
         self.assertTrue(backup_report.exists())
         report = json.loads(backup_report.read_text(encoding='utf-8'))
-        self.assertEqual(report['command'], 'backup')
-        self.assertEqual(report['status'], 'OK')
-        self.assertIn('artifact', report)
+        self.assertEqual(report['report_version'], 2)
+        self.assertEqual(report['metadata']['command'], 'backup')
+        self.assertEqual(report['final_status'], 'OK')
+        self.assertEqual(len(report['artifacts']), 1)
+        self.assertNotIn('status', report)
+        self.assertNotIn('artifact', report)
 
-        artifact_path = Path(report['artifact']['path'])
-        metadata_path = Path(report['artifact']['metadata_path'])
+        artifact = report['artifacts'][0]
+        artifact_path = Path(artifact['path'])
+        metadata_path = Path(artifact['metadata_path'])
+        self.assertTrue(artifact_path.is_absolute())
+        self.assertTrue(metadata_path.is_absolute())
         self.assertTrue(artifact_path.exists())
         self.assertTrue(metadata_path.exists())
         self.assertTrue(artifact_path.name.endswith('.sql.gz'))
@@ -135,7 +141,7 @@ class BackupCommandTests(unittest.TestCase):
         self.assertEqual(metadata['resource'], 'mysql-main')
         self.assertEqual(metadata['status'], 'OK')
         self.assertEqual(metadata['path'], str(artifact_path))
-        self.assertEqual(metadata['sha256'], report['artifact']['sha256'])
+        self.assertEqual(metadata['sha256'], artifact['sha256'])
 
 
 if __name__ == '__main__':

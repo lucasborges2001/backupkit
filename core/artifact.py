@@ -26,7 +26,8 @@ def sha256_file(path: str | Path) -> str:
 
 
 def write_artifact_metadata(metadata: ArtifactMetadata) -> Path:
-    artifact_path = Path(metadata.path)
+    artifact_path = Path(metadata.path).expanduser().resolve()
+    metadata.path = str(artifact_path)
     metadata_path = artifact_path.with_suffix(artifact_path.suffix + '.metadata.json')
     metadata.metadata_path = str(metadata_path)
     metadata_path.write_text(json.dumps(metadata.as_dict(), indent=2, ensure_ascii=False), encoding='utf-8')
@@ -48,36 +49,31 @@ def _parse_metadata(raw: dict[str, Any], metadata_path: Path) -> ArtifactMetadat
     )
 
 
+def _resolve_policy_path(value: str | Path | None, output_dir: Path) -> Path | None:
+    if value in (None, ''):
+        return None
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (output_dir / path).resolve()
+
+
 def artifact_paths_from_config(config: dict) -> tuple[Path | None, Path | None]:
     policy = config['policy']
-    output_dir = Path(policy['artifact']['output_dir'])
+    output_dir = Path(policy['artifact']['output_dir']).expanduser().resolve()
     artifact_cfg = policy.get('artifact', {})
-    artifact_name = artifact_cfg.get('verify_path') or artifact_cfg.get('path')
-    metadata_name = artifact_cfg.get('verify_metadata_path') or artifact_cfg.get('metadata_path')
 
-    artifact_path = Path(artifact_name) if artifact_name else None
-    if artifact_path and not artifact_path.is_absolute():
-        artifact_path = output_dir / artifact_path
-
-    metadata_path = Path(metadata_name) if metadata_name else None
-    if metadata_path and not metadata_path.is_absolute():
-        metadata_path = output_dir / metadata_path
+    artifact_path = _resolve_policy_path(artifact_cfg.get('path'), output_dir)
+    metadata_path = _resolve_policy_path(artifact_cfg.get('metadata_path'), output_dir)
 
     if artifact_path and not metadata_path:
         metadata_path = artifact_path.with_suffix(artifact_path.suffix + '.metadata.json')
     elif metadata_path and not artifact_path:
         try:
             raw = json.loads(metadata_path.read_text(encoding='utf-8'))
-            candidate = raw.get('path')
-            if candidate:
-                artifact_path = Path(candidate)
+            artifact_path = _resolve_policy_path(raw.get('path'), output_dir)
         except Exception:
             artifact_path = None
-
-    if artifact_path and not artifact_path.is_absolute():
-        artifact_path = output_dir / artifact_path
-    if metadata_path and not metadata_path.is_absolute():
-        metadata_path = output_dir / metadata_path
 
     return artifact_path, metadata_path
 

@@ -161,6 +161,13 @@ class RunReport:
     def _notifications_list(self) -> list[dict]:
         return list(self.notifications)
 
+    def _restore_test_payload(self) -> dict:
+        if not self.restore_test:
+            return {}
+        payload = dict(self.restore_test)
+        payload.pop('validator_results', None)
+        return payload
+
     def _summary_human(self) -> str:
         counts = self.summary
         parts = [
@@ -197,21 +204,6 @@ class RunReport:
                 'total': counts['total'],
             },
         }
-        evidence = {
-            'checks': [c.as_dict() for c in self.checks],
-        }
-        if self.artifact:
-            evidence['artifacts'] = self._artifact_list()
-        if self.restore_test is not None:
-            evidence['restore_test'] = self.restore_test
-        if self.housekeeping is not None:
-            evidence['housekeeping'] = self.housekeeping
-        validators = self._validator_list()
-        if validators:
-            evidence['validators'] = validators
-        notifications = self._notifications_list()
-        if notifications:
-            evidence['notifications'] = notifications
         return {
             'id': self.phase,
             'status': self.status,
@@ -219,29 +211,16 @@ class RunReport:
             'finished_at': self.finished_at.isoformat() if self.finished_at else None,
             'duration_ms': self.duration_ms,
             'summary': phase_summary,
-            'evidence': evidence,
+            'evidence': {
+                'checks': [c.as_dict() for c in self.checks],
+                'restore_test': self._restore_test_payload(),
+            },
         }
 
     def as_dict(self):
         self.finalize()
-        counts = self.summary
-        phase = self._phase_payload()
-        artifacts = self._artifact_list()
-        validators = self._validator_list()
-        notifications = self._notifications_list()
-        data = {
+        return {
             'report_version': self.report_version,
-            'project': self.project,
-            'resource': self.resource,
-            'resource_type': self.resource_type,
-            'command': self.command,
-            'phase': self.phase,
-            'started_at': self.started_at.isoformat(),
-            'finished_at': self.finished_at.isoformat() if self.finished_at else None,
-            'duration_sec': self.duration_sec,
-            'status': self.status,
-            'summary': counts,
-            'checks': [c.as_dict() for c in self.checks],
             'metadata': {
                 'project': self.project,
                 'resource': self.resource,
@@ -252,16 +231,10 @@ class RunReport:
                 'duration_ms': self.duration_ms,
             },
             'final_status': self.status,
-            'phases': [phase],
-            'artifacts': artifacts,
-            'validators': validators,
-            'notifications': notifications,
+            'phases': [self._phase_payload()],
+            'artifacts': self._artifact_list(),
+            'validators': self._validator_list(),
+            'notifications': self._notifications_list(),
+            'housekeeping': self.housekeeping or {},
             'final_summary': self._summary_human(),
         }
-        if self.artifact:
-            data['artifact'] = self.artifact.as_dict()
-        if self.restore_test is not None:
-            data['restore_test'] = self.restore_test
-        if self.housekeeping is not None:
-            data['housekeeping'] = self.housekeeping
-        return data

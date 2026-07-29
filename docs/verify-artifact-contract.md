@@ -2,77 +2,120 @@
 
 ## Objetivo
 
-Validar técnicamente un artefacto ya generado por `backupkit backup`, sin restaurarlo ni ejecutar validadores de negocio.
+Validar técnicamente un artefacto generado por `backupkit backup`, sin restaurarlo ni ejecutar validadores de negocio.
 
 ## Entrada esperada
 
-En `policy.yml`, dentro de `artifact`, se debe informar al menos una de estas opciones:
+Dentro de `artifact` se informa:
 
-- `path`
-- `metadata_path`
+- `output_dir`;
+- `path` o `metadata_path`.
 
-También se aceptan:
+Nombres canónicos:
 
-- `verify_path`
-- `verify_metadata_path`
+```text
+artifact.path
+artifact.metadata_path
+```
 
-Si solo se informa `path`, el sistema intenta inferir el sidecar con sufijo `.metadata.json`.
-Si solo se informa `metadata_path`, el sistema intenta resolver el `path` desde la metadata.
+No se aceptan:
+
+```text
+artifact.verify_path
+artifact.verify_metadata_path
+```
+
+Su presencia produce `core.config.unsupported=ERROR`.
+
+## Semántica de rutas
+
+- un path absoluto se usa directamente;
+- un path relativo se resuelve respecto de `artifact.output_dir`;
+- si solo se informa `path`, el sidecar se infiere agregando `.metadata.json`;
+- si solo se informa `metadata_path`, `path` se obtiene desde la metadata.
+
+Ejemplo relativo:
+
+```yaml
+artifact:
+  output_dir: ./var/output
+  path: mysql-basic__mysql-main__20260330T120000Z.sql.gz
+  metadata_path: mysql-basic__mysql-main__20260330T120000Z.sql.gz.metadata.json
+```
 
 ## Validaciones mínimas
 
-- archivo existe
-- archivo no vacío
-- gzip válido si el archivo termina en `.gz`
-- metadata presente y parseable
-- sha256 presente en metadata
-- sha256 consistente con el archivo
+- archivo existe;
+- archivo no vacío;
+- gzip válido si termina en `.gz`;
+- metadata presente y parseable;
+- SHA-256 presente;
+- SHA-256 consistente;
 - metadata coherente con:
-  - path
-  - tamaño
-  - engine
-  - project
-  - resource
+  - path;
+  - metadata path;
+  - tamaño;
+  - engine;
+  - project;
+  - resource;
+  - timestamp;
+  - duración no negativa.
 
-## Clasificación actual
+## Clasificación
 
 ### `ERROR`
 
-Se usa para fallas bloqueantes como:
-- archivo faltante
-- archivo vacío
-- gzip inválido
-- metadata faltante o ilegible
-- sha256 ausente
-- sha256 inconsistente
-- metadata incoherente con el artefacto o con la corrida
+Fallas bloqueantes:
+
+- path de entrada ausente;
+- archivo faltante o vacío;
+- gzip inválido;
+- metadata ausente o ilegible;
+- SHA-256 ausente o inconsistente;
+- metadata incoherente;
+- campo de policy retirado.
 
 ### `WARN`
 
-Se usa para casos no bloqueantes, por ejemplo:
-- metadata con `status` distinto de `OK`
-- archivo no `.gz`, donde la validación de gzip se omite
+Casos no bloqueantes:
+
+- metadata con `status` distinto de `OK`;
+- archivo no `.gz`, por lo que se omite la validación gzip.
 
 ## Salida
 
-- `verify-artifact-report.json`
-- `artifact` embebido en el reporte si la metadata pudo parsearse
+Archivos:
 
-## Checks actuales esperables
+- `verify-artifact-report.json`;
+- `<project>__<resource>__<timestamp>__verify-artifact-report.json`.
 
-- `artifact.file.exists`
-- `artifact.file.nonempty`
-- `artifact.gzip.valid`
-- `artifact.metadata.present`
-- `artifact.metadata.parse`
-- `artifact.sha256.present`
-- `artifact.sha256.match`
-- `artifact.metadata.consistency`
-- `artifact.metadata.status`
+Rutas canónicas del resultado:
 
-## No cubre todavía
+```text
+final_status
+artifacts[]
+phases[0].evidence.checks[]
+```
 
-- restore test
-- validators de negocio
-- baseline histórico
-- verificación de contenido SQL más allá de la integridad técnica del artefacto
+No se publican `status`, `artifact` ni `checks` como campos top-level.
+
+## Checks esperables
+
+- `core.config.unsupported` cuando la policy contiene campos retirados;
+- `artifact.file.exists`;
+- `artifact.file.nonempty`;
+- `artifact.gzip.valid`;
+- `artifact.metadata.present`;
+- `artifact.metadata.parse`;
+- `artifact.sha256.present`;
+- `artifact.sha256.match`;
+- `artifact.metadata.consistency`;
+- `artifact.metadata.status`.
+
+## Fuera de alcance
+
+- restore test;
+- validators de negocio;
+- baseline histórico;
+- verificación semántica completa del SQL;
+- upload o cifrado del artefacto.

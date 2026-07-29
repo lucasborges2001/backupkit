@@ -1,0 +1,55 @@
+{
+  "report_version": 2,
+  "metadata": {
+    "project": "demo",
+    "resource": "mysql-main",
+    "resource_type": "mysql",
+    "command": "precheck",
+    "started_at": "2026-07-29T12:00:00+00:00",
+    "finished_at": "2026-07-29T12:00:00.025000+00:00",
+    "duration_ms": 25
+  },
+  "final_status": "OK",
+  "phases": [
+    {
+      "id": "precheck",
+      "status": "OK",
+      "started_at": "2026-07-29T12:00:00+00:00",
+      "finished_at": "2026-07-29T12:00:00.025000+00:00",
+      "duration_ms": 25,
+      "summary": {
+        "human": "Pipeline precheck finalizo con estado OK; checks total=2; ok=2; warn=0; error=0",
+        "counts": {
+          "ok": 2,
+          "warn": 0,
+          "error": 0,
+          "total": 2
+        }
+      },
+      "evidence": {
+        "checks": [
+          {
+            "id": "core.config.required",
+            "status": "OK",
+            "severity": "blocking",
+            "message": "Required policy fields present",
+            "meta": {}
+          },
+          {
+            "id": "core.output_dir.writable",
+            "status": "OK",
+            "severity": "blocking",
+            "message": "Output dir writable",
+            "meta": {}
+          }
+        ],
+        "restore_test": {}
+      }
+    }
+  ],
+  "artifacts": [],
+  "validators": [],
+  "notifications": [],
+  "housekeeping": {},
+  "final_summary": "Pipeline precheck finalizo con estado OK; checks total=2; ok=2; warn=0; error=0"
+}

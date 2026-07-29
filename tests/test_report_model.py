@@ -4,40 +4,80 @@ import unittest
 from pathlib import Path
 
 from core.cli import write_report
-from core.result import CheckResult, RunReport, ArtifactMetadata
+from core.result import ArtifactMetadata, CheckResult, RunReport
 
 
 class ReportModelTests(unittest.TestCase):
-    def test_report_exposes_pipeline_shape_and_legacy_fields(self):
+    def test_report_exposes_only_strict_pipeline_shape(self):
         report = RunReport(project='demo', resource='mysql-main', resource_type='mysql', command='precheck')
         report.add(CheckResult('core.config.required', 'OK', 'blocking', 'Required policy fields present'))
         report.add_notification('telegram', 'OK', 'telegram sent')
         payload = report.as_dict()
 
-        self.assertEqual(payload['project'], 'demo')
-        self.assertEqual(payload['resource'], 'mysql-main')
-        self.assertEqual(payload['resource_type'], 'mysql')
-        self.assertEqual(payload['command'], 'precheck')
-        self.assertEqual(payload['phase'], 'precheck')
-        self.assertEqual(payload['status'], 'OK')
-        self.assertEqual(payload['final_status'], 'OK')
-        self.assertEqual(payload['summary']['OK'], 1)
-        self.assertEqual(payload['summary']['total'], 1)
-        self.assertIn('started_at', payload)
-        self.assertIn('finished_at', payload)
-        self.assertEqual(payload['checks'][0]['id'], 'core.config.required')
-
-        self.assertIn('metadata', payload)
+        self.assertEqual(
+            set(payload),
+            {
+                'report_version',
+                'metadata',
+                'final_status',
+                'phases',
+                'artifacts',
+                'validators',
+                'notifications',
+                'housekeeping',
+                'final_summary',
+            },
+        )
+        self.assertEqual(payload['report_version'], 2)
+        self.assertEqual(payload['metadata']['project'], 'demo')
+        self.assertEqual(payload['metadata']['resource'], 'mysql-main')
+        self.assertEqual(payload['metadata']['resource_type'], 'mysql')
+        self.assertEqual(payload['metadata']['command'], 'precheck')
+        self.assertIn('started_at', payload['metadata'])
+        self.assertIn('finished_at', payload['metadata'])
         self.assertIn('duration_ms', payload['metadata'])
+        self.assertEqual(payload['final_status'], 'OK')
+
         self.assertEqual(len(payload['phases']), 1)
-        self.assertEqual(payload['phases'][0]['id'], 'precheck')
-        self.assertEqual(payload['phases'][0]['status'], 'OK')
-        self.assertEqual(payload['phases'][0]['summary']['counts']['total'], 1)
-        self.assertEqual(payload['phases'][0]['evidence']['checks'][0]['id'], 'core.config.required')
+        phase = payload['phases'][0]
+        self.assertEqual(phase['id'], 'precheck')
+        self.assertEqual(phase['status'], 'OK')
+        self.assertEqual(phase['summary']['counts']['total'], 1)
+        self.assertEqual(set(phase['evidence']), {'checks', 'restore_test'})
+        self.assertEqual(phase['evidence']['checks'][0]['id'], 'core.config.required')
+        self.assertEqual(phase['evidence']['restore_test'], {})
+        self.assertEqual(payload['artifacts'], [])
+        self.assertEqual(payload['validators'], [])
         self.assertEqual(payload['notifications'][0]['channel'], 'telegram')
+        self.assertEqual(payload['housekeeping'], {})
         self.assertIn('final_summary', payload)
 
-    def test_report_surfaces_artifacts_and_validators_in_pipeline_arrays(self):
+        duplicated_evidence_fields = {
+            'artifacts',
+            'validators',
+            'notifications',
+            'housekeeping',
+        }
+        self.assertTrue(duplicated_evidence_fields.isdisjoint(phase['evidence']))
+
+        legacy_fields = {
+            'project',
+            'resource',
+            'resource_type',
+            'command',
+            'phase',
+            'started_at',
+            'finished_at',
+            'duration_sec',
+            'status',
+            'summary',
+            'checks',
+            'artifact',
+            'restore_test',
+        }
+        self.assertTrue(legacy_fields.isdisjoint(payload))
+
+    def test_report_exposes_each_restore_concept_once(self):
         report = RunReport(project='demo', resource='mysql-main', resource_type='mysql', command='restore-test')
         report.add(CheckResult('adapter.mysql.restore.import', 'OK', 'blocking', 'restore ok'))
         report.set_artifact(ArtifactMetadata.from_values(
@@ -72,10 +112,16 @@ class ReportModelTests(unittest.TestCase):
         self.assertEqual(payload['artifacts'][0]['engine'], 'mysql')
         self.assertEqual(len(payload['validators']), 1)
         self.assertEqual(payload['validators'][0]['id'], 'users_non_zero')
-        self.assertEqual(payload['phases'][0]['evidence']['restore_test']['database'], 'bkrt_demo')
-        self.assertEqual(payload['phases'][0]['evidence']['validators'][0]['id'], 'users_non_zero')
 
-    def test_write_report_still_writes_precheck_report_json(self):
+        evidence = payload['phases'][0]['evidence']
+        self.assertEqual(evidence['restore_test']['database'], 'bkrt_demo')
+        self.assertNotIn('validator_results', evidence['restore_test'])
+        self.assertNotIn('artifacts', evidence)
+        self.assertNotIn('validators', evidence)
+        self.assertNotIn('notifications', evidence)
+        self.assertNotIn('housekeeping', evidence)
+
+    def test_write_report_writes_strict_precheck_report_json(self):
         report = RunReport(project='demo', resource='mysql-main', resource_type='mysql', command='precheck')
         report.add(CheckResult('core.output_dir.writable', 'OK', 'blocking', 'Output dir writable'))
 
@@ -83,10 +129,13 @@ class ReportModelTests(unittest.TestCase):
             report_path = write_report(report, tmp)
             self.assertEqual(report_path.name, 'precheck-report.json')
             payload = json.loads(Path(report_path).read_text(encoding='utf-8'))
-            self.assertEqual(payload['status'], 'OK')
-            self.assertEqual(payload['summary']['total'], 1)
+            self.assertEqual(payload['report_version'], 2)
             self.assertEqual(payload['final_status'], 'OK')
+            self.assertEqual(payload['metadata']['command'], 'precheck')
             self.assertEqual(payload['phases'][0]['status'], 'OK')
+            self.assertEqual(payload['phases'][0]['summary']['counts']['total'], 1)
+            self.assertNotIn('status', payload)
+            self.assertNotIn('checks', payload)
 
 
 if __name__ == '__main__':
