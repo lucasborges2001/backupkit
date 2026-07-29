@@ -8,7 +8,7 @@
 report_version = 2
 ```
 
-No existen campos top-level alternativos ni compatibilidad con el formato anterior.
+No existen aliases, campos legacy ni rutas duplicadas para un mismo concepto.
 
 ## Estructura canónica
 
@@ -43,11 +43,7 @@ No existen campos top-level alternativos ni compatibilidad con el formato anteri
       },
       "evidence": {
         "checks": [],
-        "artifacts": [],
-        "restore_test": {},
-        "validators": [],
-        "notifications": [],
-        "housekeeping": {}
+        "restore_test": {}
       }
     }
   ],
@@ -61,7 +57,7 @@ No existen campos top-level alternativos ni compatibilidad con el formato anteri
 
 ## Campos top-level
 
-El conjunto de campos es exacto:
+El conjunto es exacto:
 
 ```text
 report_version
@@ -75,7 +71,26 @@ housekeeping
 final_summary
 ```
 
-Los arrays vacíos y objetos vacíos se conservan para mantener una forma estable.
+Los arrays y objetos vacíos se conservan para mantener una forma estable.
+
+## Mapa 1 a 1
+
+| Concepto | Ruta única |
+|---|---|
+| identidad y tiempo de corrida | `metadata` |
+| estado final | `final_status` |
+| estado y resumen de fase | `phases[].status` y `phases[].summary` |
+| checks | `phases[].evidence.checks[]` |
+| detalle de restore | `phases[].evidence.restore_test` |
+| artefactos | `artifacts[]` |
+| resultados de validators | `validators[]` |
+| intentos de notificación | `notifications[]` |
+| retención | `housekeeping` |
+| resumen humano global | `final_summary` |
+
+`phases[].evidence` no replica `artifacts`, `validators`, `notifications` ni `housekeeping`.
+
+El objeto `restore_test` no replica `validator_results`; los resultados viven únicamente en `validators[]`.
 
 ## `metadata`
 
@@ -89,7 +104,7 @@ Describe la corrida completa:
 - `finished_at`;
 - `duration_ms`.
 
-`command` admite actualmente:
+Comandos vigentes:
 
 - `precheck`;
 - `backup`;
@@ -97,8 +112,6 @@ Describe la corrida completa:
 - `restore-test`.
 
 ## `final_status`
-
-Estado consolidado:
 
 - `ERROR`: existe al menos un check con `status=ERROR`;
 - `WARN`: no hay errores y existe al menos un warning;
@@ -114,9 +127,9 @@ Códigos de salida:
 
 ## `phases[]`
 
-Cada comando genera actualmente una fase cuyo `id` coincide con el comando.
+Cada comando genera actualmente una fase cuyo `id` coincide con `metadata.command`.
 
-Campos de fase:
+Campos:
 
 - `id`;
 - `status`;
@@ -128,9 +141,7 @@ Campos de fase:
 
 ### `summary`
 
-Contiene:
-
-- `human`: resumen legible;
+- `human`;
 - `counts.ok`;
 - `counts.warn`;
 - `counts.error`;
@@ -138,26 +149,22 @@ Contiene:
 
 ### `evidence`
 
-El objeto contiene siempre:
+Contiene exactamente:
 
-- `checks[]`;
-- `artifacts[]`;
-- `restore_test`;
-- `validators[]`;
-- `notifications[]`;
-- `housekeeping`.
+```text
+checks
+restore_test
+```
 
-`checks[]` es la fuente canónica de checks de ejecución.
-
-`restore_test` queda vacío para comandos que no ejecutan restore.
+`restore_test` es `{}` para comandos distintos de `restore-test`.
 
 ## `artifacts[]`
 
-Lista plana de artefactos asociados a la corrida.
+Lista única de artefactos asociados a la corrida.
 
 Para `backup` contiene el artefacto generado. Para `verify-artifact` y `restore-test` contiene el artefacto verificado cuando su metadata pudo parsearse.
 
-Campos actuales de un artefacto:
+Campos actuales:
 
 - `path`;
 - `metadata_path`;
@@ -174,7 +181,7 @@ Campos actuales de un artefacto:
 
 ## `validators[]`
 
-Lista plana de resultados de validators SQL declarativos.
+Lista única de resultados de validators SQL declarativos.
 
 Se mantiene vacía salvo durante `restore-test` con validators configurados.
 
@@ -187,9 +194,11 @@ Cada resultado puede incluir:
 - `actual_value`;
 - datos de la regla evaluada.
 
+Las definiciones configuradas y el resumen agregado pueden permanecer en `phases[].evidence.restore_test`, pero los resultados individuales no se duplican allí.
+
 ## `notifications[]`
 
-Lista de intentos de notificación:
+Lista única de intentos de notificación:
 
 - `channel`;
 - `status`;
@@ -198,9 +207,9 @@ Lista de intentos de notificación:
 
 ## `housekeeping`
 
-Detalle de retención. Es `{}` cuando `retention.enabled=false`.
+Objeto único de retención. Es `{}` cuando `retention.enabled=false`.
 
-Cuando está habilitado incluye:
+Cuando está habilitado puede incluir:
 
 - `status`;
 - `policy`;
@@ -210,17 +219,17 @@ Cuando está habilitado incluye:
 - `protected_runs[]`;
 - `deleted_runs[]`;
 - `skipped_deletions[]`;
-- `failed_deletions[]` cuando corresponda.
+- `failed_deletions[]`.
 
 ## `final_summary`
 
-Resumen humano consolidado para logs y operación rápida.
+Resumen humano para logs y operación rápida.
 
-No debe parsearse como fuente estructural; los consumidores deben usar los demás campos.
+No debe parsearse como fuente estructural.
 
 ## Campos que no forman parte de `v2`
 
-Los siguientes nombres no se publican en el nivel superior:
+No se publican en el nivel superior:
 
 ```text
 project
@@ -238,16 +247,4 @@ artifact
 restore_test
 ```
 
-Equivalencias canónicas:
-
-| Concepto | Ruta `v2` |
-|---|---|
-| estado final | `final_status` |
-| comando | `metadata.command` |
-| duración | `metadata.duration_ms` |
-| checks | `phases[0].evidence.checks[]` |
-| artefactos | `artifacts[]` |
-| restore | `phases[0].evidence.restore_test` |
-| validators | `validators[]` |
-
-Estas son rutas contractuales, no aliases temporales.
+Tampoco se publican rutas alternativas dentro de `phases[].evidence` para conceptos que ya tienen un campo top-level canónico.
