@@ -10,7 +10,7 @@
 | [`verify-artifact-contract.md`](verify-artifact-contract.md) | Integridad técnica del artifact y sidecar. |
 | [`restore-test-contract.md`](restore-test-contract.md) | Restore efímero, validators y cleanup. |
 | [`report-format.md`](report-format.md) | Contrato público `backupkit.report.v2`. |
-| [`pruebas-integration.md`](pruebas-integration.md) | Superficie pública read-only para integración con `Pruebas`. |
+| [`pruebas-integration.md`](pruebas-integration.md) | Integración vigente con `Pruebas`, superficie read-only y perfil estructural `external-tooling`. |
 | [`deploy.md`](deploy.md) | Artifact standalone de servidor, layout, activación y rollback. |
 
 ## Pendientes propios y operativos
@@ -23,8 +23,31 @@
 
 | Documento | Repositorio propietario |
 |---|---|
-| [`pendientes/pruebas-host-integration.md`](pendientes/pruebas-host-integration.md) | `lucasborges2001/Pruebas` |
 | [`pendientes/base-deploy-builder-backupkit.md`](pendientes/base-deploy-builder-backupkit.md) | `lucasborges2001/Base` |
+
+## Cierres históricos conservados
+
+| Documento | Estado |
+|---|---|
+| [`pendientes/pruebas-host-integration.md`](pendientes/pruebas-host-integration.md) | `CERRADO/HISTÓRICO`: el alta host ya fue implementada; se conserva en esta ruta hasta autorización explícita de borrado documental. |
+
+La fuente normativa para el estado actual de integración es [`pruebas-integration.md`](pruebas-integration.md), no el pendiente histórico.
+
+## Perfil de Structure Audit
+
+La raíz de BackupKit contiene:
+
+```text
+.structure-audit-profile
+```
+
+con valor:
+
+```text
+external-tooling
+```
+
+Este contrato evita que la presencia del bootstrap `back/` se interprete como evidencia suficiente de un módulo funcional. La certificación remota del checkpoint corregido pertenece al host `Pruebas` y no se considera PASS hasta que exista un reporte nuevo del SHA correspondiente.
 
 ## Fuente histórica
 
@@ -35,7 +58,7 @@
 Para una integración o deploy nuevo:
 
 ```text
-policy.md + contrato del comando + report-format.md + deploy.md
+policy.md + contrato del comando + report-format.md + deploy.md + pruebas-integration.md
 ```
 
 Para habilitación productiva:

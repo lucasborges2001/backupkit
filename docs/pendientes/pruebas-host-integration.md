@@ -1,91 +1,27 @@
-# Pendiente externo — Alta de backupkit en Pruebas
+# Cierre histórico — Alta de backupkit en Pruebas
 
 ## Estado
 
-Pendiente externo. No implementado en `lucasborges2001/Pruebas`.
-
-`backupkit` ya incorpora el manifest, bootstrap read-only, fixture y smoke necesarios para preparar el alta. Este archivo registra exclusivamente los cambios que pertenecen al host integrador.
-
-## Repositorio propietario
-
 ```text
-lucasborges2001/Pruebas
+CERRADO
+HISTORICO
+NO ES BACKLOG VIVO
 ```
 
-No resolver estas tareas copiando archivos dentro de `backupkit` ni agregando dependencias desde `backupkit` hacia el host.
+Este archivo nació como pendiente externo para `lucasborges2001/Pruebas`. El alta host ya fue implementada y este documento se conserva únicamente porque la política documental requiere autorización explícita para borrar archivos.
 
-## Objetivo
-
-Agregar `lucasborges2001/backupkit` como submodulo opcional de tooling del servidor y permitir que `Pruebas` muestre su estado mediante reportes JSON `v2`, sin ejecutar operaciones de backup o restore desde HTTP.
-
-## Dependencias
+La fuente normativa actual es:
 
 ```text
-Fase 0: backupkit/main validado y con SHA integrable
-Fase 1: alta del gitlink y manifest host
-Fase 2: adapter host read-only
-Fase 3: smoke/TestKit
-Fase 4: documentacion operativa
-Fase 5 opcional: SuperAdmin agregado usando Base
+docs/pruebas-integration.md
 ```
 
-La Fase 5 no bloquea las fases 1 a 4.
+## Resultado implementado
 
-## Fase 0 — Cerrar SHA integrable en backupkit
-
-Repositorio: `lucasborges2001/backupkit`.
-
-Validaciones requeridas:
-
-```bash
-python3 -m compileall -q core adapters tests
-python3 -m unittest discover -s tests -p 'test_*.py' -v
-php -l module.php
-php -l back/bootstrap.php
-php -l tests/test_php_contract.php
-php tests/test_php_contract.php
-git diff --check
-```
-
-Criterio PASS:
+BackupKit quedó integrado en `Pruebas` como tooling opcional del servidor con:
 
 ```text
-[ ] suites Python PASS
-[ ] lint PHP PASS
-[ ] BACKUPKIT_PHP_CONTRACT_PASS
-[ ] rama mergeada en backupkit/main
-[ ] SHA final registrado
-[ ] working tree limpio
-```
-
-Criterio FAIL:
-
-- integrar un SHA de rama no validado;
-- integrar un commit anterior al manifest/bootstrap;
-- integrar con tests omitidos sin bloqueo documentado.
-
-## Fase 1 — Alta del submodulo en Pruebas
-
-Archivos esperados en `Pruebas`:
-
-```text
-.gitmodules
-config/submodules.php
-submodules/backupkit  # gitlink
-```
-
-Identidad exacta:
-
-```text
-name: backupkit
 path: submodules/backupkit
-url: https://github.com/lucasborges2001/backupkit.git
-branch: main
-```
-
-Clasificacion:
-
-```text
 tier: tooling-server-backup
 required_for_preflight: false
 include_in_app_deploy: false
@@ -93,196 +29,79 @@ tooling: true
 optional: true
 ```
 
-`required_paths`:
+El host dispone de:
+
+- gitlink owner;
+- registro en `config/submodules.php`;
+- adapter PHP read-only;
+- suite `backupkit_contract`;
+- build standalone mediante Base;
+- documentación de integración;
+- exclusión explícita del app deploy.
+
+La integración no habilita ejecución CLI desde HTTP.
+
+## Checkpoint relevante actual
 
 ```text
-module.php
-back/bootstrap.php
-bin/backupkit
+backupkit: 07f9eaa97791ec904833bf32d959a903ce43eff9
+Pruebas:   00531dd73c40de16a76df280e019d4a46a2cfec0
+Base:      a357c4469542573fbaa4b38727a29645b3d77fde
+TestKit:   b61d8b16ecba682cc8816060e657230051ea1c54
 ```
 
-Criterio PASS:
+El SHA de BackupKit anterior incluye `.structure-audit-profile = external-tooling`.
+
+## Fases históricas
+
+Las fases originalmente previstas quedaron implementadas de la siguiente forma:
 
 ```text
-[ ] .gitmodules y config/submodules.php coinciden 1 a 1
-[ ] gitlink apunta al SHA validado de backupkit/main
-[ ] no cambia otro gitlink
-[ ] no entra al app deploy
-[ ] no bloquea el preflight general
-[ ] ausencia del submodulo degrada como tooling opcional
+Fase 0: owner contract              IMPLEMENTADA/MERGED
+Fase 1: gitlink + manifest host     IMPLEMENTADA/MERGED
+Fase 2: adapter host read-only      IMPLEMENTADA/MERGED
+Fase 3: smoke/TestKit               IMPLEMENTADA
+Fase 4: documentación operativa     IMPLEMENTADA
+Fase 5: SuperAdmin agregado         NO IMPLEMENTADA / OPCIONAL
 ```
 
-## Fase 2 — Adapter host read-only
+La ausencia de SuperAdmin no reabre el alta host porque esa fase era opcional y no forma parte del contrato mínimo.
 
-Responsabilidad de `Pruebas`:
-
-- resolver una ruta fija de reporte mediante configuracion del servidor;
-- cargar `submodules/backupkit/back/bootstrap.php`;
-- usar `backupkit_health_payload()` para health agregado;
-- usar `backupkit_report_summary()` para cualquier representacion visual;
-- capturar excepciones y devolver estado degradado sanitizado;
-- no imprimir el reporte crudo en una respuesta web.
-
-Contrato de configuracion sugerido:
+## Invariantes que siguen vigentes
 
 ```text
-BACKUPKIT_REPORT_PATH=/srv/backupkit/output/backup-report.json
+backupkit core -X-> Pruebas
+backupkit core -X-> Base
+HTTP -X-> bin/backupkit
+HTTP -X-> backup/restore/retention
+app deploy -X-> backupkit
 ```
 
-Restricciones:
+El host solo puede consumir la superficie pública read-only del owner.
 
-- la ruta no puede venir de request, query string, formulario o cookie;
-- el archivo debe permanecer fuera de `public_html`;
-- no recorrer directorios para descubrir reports;
-- no importar internals Python;
-- no leer `.env.backup` desde el host web;
-- no ejecutar el CLI desde PHP.
+## Deuda que no pertenece a este cierre
 
-Criterio PASS:
+Este documento no representa backlog para:
+
+- instalación productiva;
+- scheduler;
+- secrets provisioning;
+- backup MySQL real;
+- restore-test real;
+- retención real;
+- SuperAdmin opcional;
+- certificación remota post-fix de Structure Audit.
+
+La operación productiva permanece en:
 
 ```text
-[ ] sin ruta configurada => unavailable/degraded informativo
-[ ] report v2 valido => summary read-only
-[ ] report invalido => degraded, nunca ready
-[ ] excepcion no filtra paths ni secretos al cliente
-[ ] no existe shell_exec/proc_open/system/passthru para backupkit
+docs/pendientes/operacion-produccion.md
 ```
 
-## Fase 3 — Smoke y TestKit
+La certificación estructural posterior al override se gestiona desde `Pruebas` y debe probar el SHA exacto del host.
 
-Archivos candidatos en `Pruebas`:
+## Regla de uso
 
-```text
-config/testkit-suites.php
-test/smoke/backupkit_contract.php
-```
+No crear nuevas tareas dentro de este archivo. Si aparece deuda real, registrarla en el documento owner correspondiente o en el repositorio propietario.
 
-El smoke host debe consumir:
-
-```text
-submodules/backupkit/tests/fixtures/precheck-report.json
-```
-
-Cobertura minima:
-
-1. manifest accesible;
-2. bootstrap accesible;
-3. dependencia de repositorio vacia;
-4. fixture `v2` valido;
-5. campo legacy rechazado;
-6. summary sin paths absolutos;
-7. summary sin SQL;
-8. health sin ejecucion HTTP;
-9. modulo faltante no bloquea la app;
-10. report invalido no produce ready.
-
-No considerar este smoke como prueba de backup MySQL real. La ejecucion real permanece en las suites propias de `backupkit` y en un entorno descartable.
-
-Criterio PASS:
-
-```text
-[ ] suite backupkit_contract registrada
-[ ] smoke aislado PASS
-[ ] host_integrated incluye la suite si corresponde
-[ ] resultado distingue fixture de ejecucion real
-```
-
-## Fase 4 — Documentacion operativa en Pruebas
-
-Archivos candidatos:
-
-```text
-README.md
-docs/operacion/submodulos.md
-docs/integraciones/backupkit.md
-docs/cambios/<fecha>-backupkit.md
-```
-
-La documentacion debe declarar:
-
-- tooling opcional;
-- ejecucion fuera del runtime web;
-- ruta de reports fuera de `public_html`;
-- contratos `backupkit.manifest.v1`, `backupkit.report.v2` y `backupkit.health.v1`;
-- ausencia de UI propia;
-- ausencia de HTTP writes;
-- scheduling externo;
-- limites y rollback.
-
-Criterio PASS:
-
-```text
-[ ] no se promete SuperAdmin si no existe
-[ ] no se documenta ejecucion desde HTTP
-[ ] no se documentan aliases o campos legacy
-[ ] docs coinciden con config/submodules.php
-```
-
-## Fase 5 — SuperAdmin agregado opcional
-
-Esta fase pertenece a `Pruebas` y `Base`, no al core standalone de `backupkit`.
-
-Arquitectura permitida:
-
-```text
-Base -> auth, layout y componentes reusables
-Pruebas -> adapter y composicion del panel
-backupkit -> manifest, health y summary read-only
-```
-
-Primera version permitida:
-
-- estado del ultimo reporte;
-- proyecto y recurso;
-- comando;
-- duracion;
-- conteos OK/WARN/ERROR;
-- nombre y tamaño del artefacto sin path absoluto;
-- cleanup de restore-test;
-- validators sanitizados;
-- housekeeping resumido.
-
-Acciones prohibidas:
-
-- iniciar backup;
-- iniciar restore-test;
-- borrar artefactos;
-- editar policy;
-- editar secretos;
-- descargar dumps;
-- elegir paths arbitrarios;
-- ejecutar SQL.
-
-Criterio PASS:
-
-```text
-[ ] solo lectura
-[ ] usa componentes publicos de Base
-[ ] no agrega dependencia Base al core Python
-[ ] no expone paths absolutos ni SQL
-[ ] no registra acciones write
-```
-
-## Rollback
-
-Orden de rollback en `Pruebas`:
-
-1. deshabilitar adapter/panel host;
-2. retirar suite host si depende del gitlink;
-3. revertir entrada de `config/submodules.php`;
-4. revertir `.gitmodules` y gitlink en el mismo cambio controlado;
-5. conservar los reportes y configuracion operativa fuera del repo;
-6. no borrar artefactos de backup como parte del rollback de codigo.
-
-## Criterio de cierre total
-
-```text
-[ ] backupkit/main contiene el contrato validado
-[ ] Pruebas registra el submodulo como tooling opcional
-[ ] adapter host es read-only
-[ ] TestKit host PASS
-[ ] docs operativas actualizadas
-[ ] no hay ejecucion CLI desde HTTP
-[ ] no hay dependencia directa backupkit -> Pruebas
-[ ] SuperAdmin, si existe, permanece read-only
-```
+Este archivo puede eliminarse en una limpieza documental futura únicamente con autorización explícita de borrado.
