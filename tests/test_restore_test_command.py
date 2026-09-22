@@ -63,6 +63,9 @@ if sql:
         sys.exit(0)
     m = re.search(r'DROP DATABASE IF EXISTS `?([a-zA-Z0-9_]+)`?', sql_clean, re.I)
     if m:
+        if os.environ.get('FAKE_MYSQL_FAIL_DROP') == '1':
+            sys.stderr.write('injected cleanup failure\\n')
+            sys.exit(1)
         state['databases'].pop(m.group(1), None)
         save()
         sys.exit(0)
@@ -279,6 +282,24 @@ notifications:
         self.assertNotIn('checks', report)
         state = json.loads(self.state_path.read_text(encoding='utf-8'))
         self.assertEqual(state['databases'], {})
+
+    def test_restore_cleanup_failure_is_terminal_error(self):
+        with patch.dict(os.environ, {'FAKE_MYSQL_FAIL_DROP': '1'}, clear=False):
+            code, report = self._run_restore('''
+                smoke_queries:
+                  - SELECT 1;
+            ''')
+
+        self.assertEqual(code, 2)
+        self.assertEqual(report['final_status'], 'ERROR')
+        restore_test = self._evidence(report)['restore_test']
+        self.assertTrue(restore_test['cleanup_attempted'])
+        self.assertFalse(restore_test['cleanup_succeeded'])
+        cleanup_checks = [
+            check for check in self._evidence(report)['checks']
+            if check['id'] == 'adapter.mysql.restore.cleanup'
+        ]
+        self.assertTrue(any(check['status'] == 'ERROR' for check in cleanup_checks))
 
     def test_restore_test_fails_when_critical_table_missing(self):
         code, report = self._run_restore('''

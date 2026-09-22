@@ -3,6 +3,8 @@ from __future__ import annotations
 import gzip
 import os
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,7 +15,35 @@ from core.precheck import tcp_connectivity
 from core.restore import build_restore_database_name
 from core.result import CheckResult
 from core.sql_validators import load_validators_from_policy, evaluate_validator, normalize_scalar_result, ValidatorConfigError
+from core.fs import publish_new_file
 from core.tools import resolve_tool
+
+
+def _mysql_option_value(value: object) -> str:
+    text = str(value)
+    if any(ch in text for ch in ('\n', '\r', '\x00')):
+        raise ValueError('MySQL option values cannot contain control line breaks')
+    return text.replace('\\', '\\\\').replace('"', '\\"')
+
+
+@contextmanager
+def _mysql_defaults_file(*, host: str, port: int, username: str, password: str):
+    fd, raw_path = tempfile.mkstemp(prefix='backupkit-mysql-', suffix='.cnf')
+    path = Path(raw_path)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            handle.write('[client]\n')
+            handle.write(f'host="{_mysql_option_value(host)}"\n')
+            handle.write(f'port={int(port)}\n')
+            handle.write(f'user="{_mysql_option_value(username)}"\n')
+            handle.write(f'password="{_mysql_option_value(password)}"\n')
+            handle.write('protocol=tcp\n')
+            handle.flush()
+            os.fsync(handle.fileno())
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 class MySQLAdapter:
@@ -38,15 +68,13 @@ class MySQLAdapter:
             return
 
         mysql_bin = resolve_tool('mysql_query_client') or 'mysql'
-        env_vars = os.environ.copy()
-        if password:
-            env_vars['MYSQL_PWD'] = password
-        cmd = [mysql_bin, '-h', host, '-P', str(port), '-u', username]
-        if database:
-            cmd += ['-D', database]
-        cmd += ['-e', 'SELECT 1;']
         try:
-            completed = subprocess.run(cmd, env=env_vars, capture_output=True, text=True, timeout=max(5, timeout))
+            with _mysql_defaults_file(host=host, port=port, username=username, password=password) as defaults_file:
+                cmd = [mysql_bin, f'--defaults-extra-file={defaults_file}']
+                if database:
+                    cmd += ['-D', database]
+                cmd += ['-e', 'SELECT 1;']
+                completed = subprocess.run(cmd, env=os.environ.copy(), capture_output=True, text=True, timeout=max(5, timeout))
             if completed.returncode != 0:
                 stderr = (completed.stderr or completed.stdout or '').strip()
                 report.add(CheckResult('adapter.mysql.auth', 'ERROR', 'blocking', f'MySQL auth/query failed: {stderr}'))
@@ -75,41 +103,44 @@ class MySQLAdapter:
         password = env.get('MYSQL_PASSWORD', '')
         timestamp_slug = report.timestamp_slug
         final_path = output_dir / build_backup_basename(report.project, report.resource, timestamp_slug)
-        temp_path = final_path.with_suffix(final_path.suffix + '.part')
         mysqldump_bin = resolve_tool('mysql_dump_client') or 'mysqldump'
-
-        dump_cmd = [
-            mysqldump_bin,
-            '--host', host,
-            '--port', str(port),
-            '--user', username,
-            '--single-transaction',
-            '--quick',
-            '--routines',
-            '--triggers',
-            '--events',
-            database,
-        ]
-
-        env_vars = os.environ.copy()
-        if password:
-            env_vars['MYSQL_PWD'] = password
 
         stderr_chunks: list[bytes] = []
         dump_process = None
+        temp_path: Path | None = None
+        published_artifact = False
         try:
-            with temp_path.open('wb') as raw_output:
+            if final_path.exists() or final_path.is_symlink():
+                report.add(CheckResult('adapter.mysql.backup.publish', 'ERROR', 'blocking', f'Backup artifact already exists: {final_path}'))
+                return None
+            with tempfile.NamedTemporaryFile(prefix=f'.{final_path.name}.', suffix='.part', dir=final_path.parent, delete=False) as raw_output:
+                temp_path = Path(raw_output.name)
+                os.chmod(temp_path, 0o600)
                 with gzip.GzipFile(filename='', mode='wb', fileobj=raw_output, mtime=0) as gz_output:
-                    dump_process = subprocess.Popen(dump_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env_vars)
-                    assert dump_process.stdout is not None
-                    for chunk in iter(lambda: dump_process.stdout.read(1024 * 1024), b''):
-                        if chunk:
-                            gz_output.write(chunk)
-                    dump_process.stdout.close()
-                    assert dump_process.stderr is not None
-                    stderr_chunks = dump_process.stderr.read().splitlines()
-                    dump_process.stderr.close()
-                    return_code = dump_process.wait()
+                    with _mysql_defaults_file(host=host, port=port, username=username, password=password) as defaults_file:
+                        dump_cmd = [
+                            mysqldump_bin,
+                            f'--defaults-extra-file={defaults_file}',
+                            '--single-transaction',
+                            '--quick',
+                            '--routines',
+                            '--triggers',
+                            '--events',
+                            '--hex-blob',
+                            '--no-tablespaces',
+                            '--set-gtid-purged=OFF',
+                            database,
+                        ]
+                        dump_process = subprocess.Popen(dump_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ.copy())
+                        assert dump_process.stdout is not None
+                        for chunk in iter(lambda: dump_process.stdout.read(1024 * 1024), b''):
+                            if chunk:
+                                gz_output.write(chunk)
+                        dump_process.stdout.close()
+                        assert dump_process.stderr is not None
+                        stderr_chunks = dump_process.stderr.read().splitlines()
+                        dump_process.stderr.close()
+                        return_code = dump_process.wait()
             if return_code != 0:
                 stderr = b'\n'.join(stderr_chunks).decode('utf-8', errors='replace').strip()
                 report.add(CheckResult('adapter.mysql.backup.dump', 'ERROR', 'blocking', f'MySQL dump failed: {stderr or "unknown error"}'))
@@ -119,7 +150,9 @@ class MySQLAdapter:
                 report.add(CheckResult('adapter.mysql.backup.dump', 'ERROR', 'blocking', 'MySQL dump produced an empty gzip artifact'))
                 temp_path.unlink(missing_ok=True)
                 return None
-            temp_path.replace(final_path)
+            publish_new_file(temp_path, final_path, mode=0o600)
+            temp_path = None
+            published_artifact = True
             report.add(CheckResult('adapter.mysql.backup.dump', 'OK', 'blocking', f'MySQL dump + gzip completed: {final_path.name}', {'path': str(final_path)}))
 
             metadata = build_artifact_metadata(
@@ -134,12 +167,16 @@ class MySQLAdapter:
             metadata_path = write_artifact_metadata(metadata)
             report.set_artifact(metadata)
             report.add(CheckResult('adapter.mysql.backup.sha256', 'OK', 'blocking', 'SHA256 calculated', {'sha256': metadata.sha256}))
-            report.add(CheckResult('adapter.mysql.backup.metadata', 'OK', 'blocking', f'Artifact metadata written: {metadata_path}', {'metadata_path': str(metadata_path)}))
+            report.add(CheckResult('adapter.mysql.backup.metadata', 'OK', 'blocking', f'Artifact metadata written: {metadata_path.name}'))
             return metadata
         except Exception as exc:
             if dump_process and dump_process.poll() is None:
                 dump_process.kill()
-            temp_path.unlink(missing_ok=True)
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            if published_artifact:
+                final_path.unlink(missing_ok=True)
+                final_path.with_suffix(final_path.suffix + '.metadata.json').unlink(missing_ok=True)
             report.add(CheckResult('adapter.mysql.backup.dump', 'ERROR', 'blocking', f'Backup execution failed: {exc}'))
             return None
 
@@ -169,10 +206,6 @@ class MySQLAdapter:
             report.add(CheckResult('adapter.mysql.restore.validators.config', 'ERROR', 'blocking', f'Invalid validator configuration: {exc}'))
             return None
 
-        env_vars = os.environ.copy()
-        if password:
-            env_vars['MYSQL_PWD'] = password
-
         report.set_restore_test({
             'database': temp_database,
             'artifact_path': str(verification.artifact_path),
@@ -185,17 +218,18 @@ class MySQLAdapter:
         })
 
         def run_mysql(sql: str, *, database: str | None = None, timeout_sec: int | None = None):
-            cmd = [mysql_bin, '-h', host, '-P', str(port), '-u', username]
-            if database:
-                cmd += ['-D', database]
-            cmd += ['-N', '-B', '-e', sql]
-            return subprocess.run(
-                cmd,
-                env=env_vars,
-                capture_output=True,
-                text=True,
-                timeout=timeout_sec or max(10, timeout),
-            )
+            with _mysql_defaults_file(host=host, port=port, username=username, password=password) as defaults_file:
+                cmd = [mysql_bin, f'--defaults-extra-file={defaults_file}']
+                if database:
+                    cmd += ['-D', database]
+                cmd += ['-N', '-B', '-e', sql]
+                return subprocess.run(
+                    cmd,
+                    env=os.environ.copy(),
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_sec or max(10, timeout),
+                )
 
         try:
             created = run_mysql(f"CREATE DATABASE `{temp_database}`;")
@@ -206,9 +240,15 @@ class MySQLAdapter:
             report.add(CheckResult('adapter.mysql.restore.create_db', 'OK', 'blocking', f'Temporary database created: {temp_database}', {'database': temp_database}))
 
             with gzip.open(verification.artifact_path, 'rb') as dump_stream:
-                restore_cmd = [mysql_bin, '-h', host, '-P', str(port), '-u', username, temp_database]
-                # Use input= instead of stdin= to ensure we pass decompressed data
-                completed = subprocess.run(restore_cmd, env=env_vars, input=dump_stream.read(), capture_output=True, timeout=max(30, timeout))
+                with _mysql_defaults_file(host=host, port=port, username=username, password=password) as defaults_file:
+                    restore_cmd = [mysql_bin, f'--defaults-extra-file={defaults_file}', temp_database]
+                    completed = subprocess.run(
+                        restore_cmd,
+                        env=os.environ.copy(),
+                        input=dump_stream.read(),
+                        capture_output=True,
+                        timeout=max(30, timeout),
+                    )
             if completed.returncode != 0:
                 if isinstance(completed.stderr, bytes):
                     stderr = (completed.stderr or completed.stdout or b'').decode('utf-8', errors='replace').strip()
@@ -289,6 +329,6 @@ class MySQLAdapter:
             report.set_restore_test(restore_meta)
             if cleanup.returncode != 0:
                 stderr = (cleanup.stderr or cleanup.stdout or '').strip()
-                report.add(CheckResult('adapter.mysql.restore.cleanup', 'WARN', 'warning', f'Cleanup failed for temporary database {temp_database}: {stderr}', {'database': temp_database}))
+                report.add(CheckResult('adapter.mysql.restore.cleanup', 'ERROR', 'blocking', f'Cleanup failed for temporary database {temp_database}: {stderr}', {'database': temp_database}))
             else:
                 report.add(CheckResult('adapter.mysql.restore.cleanup', 'OK', 'blocking', f'Temporary database dropped: {temp_database}', {'database': temp_database}))

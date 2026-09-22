@@ -91,9 +91,13 @@ No se publican `status`, `artifact` ni `checks` como campos top-level.
 ## Invariantes
 
 - no publica un artefacto final si `mysqldump` falla;
-- usa un archivo temporal `.part` antes del rename final;
-- no deja el `.part` ante error controlado;
-- el sidecar corresponde al artefacto final;
+- publica desde un archivo temporal y nunca sobrescribe un artifact existente;
+- el directorio de salida debe ser privado y los artifacts, sidecars y reportes se escriben en modo `0600`;
+- la contraseña MySQL viaja por un option-file temporal `0600`, no por `MYSQL_PWD` ni por argv;
+- el dump usa snapshot consistente e incluye routines, triggers, events, `--hex-blob`, `--no-tablespaces` y `--set-gtid-purged=OFF`;
+- no deja el temporal ante error controlado;
+- el sidecar corresponde al artefacto final y se publica de forma atómica;
+- housekeeping sólo corre después de un backup exitoso y es `dry_run=true` por defecto;
 - el reporte siempre respeta `report_version = 2`;
 - el código de salida deriva de `final_status`.
 

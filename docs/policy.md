@@ -242,11 +242,14 @@ Reglas soportadas:
 - `enabled`: opcional, default `false`;
 - `keep_success`: opcional, default `7`;
 - `keep_non_success`: opcional, default `5`;
+- `minimum_age_days`: opcional, default `0`; impide borrar corridas más nuevas que esa edad;
 - `delete_artifacts`: opcional, default `true`;
 - `delete_reports`: opcional, default `true`;
-- `require_verified_newer_backup`: opcional, default `true`;
+- `require_verified_newer_backup`: opcional, default `true`; exige un backup más nuevo con size/SHA-256 válidos antes de borrar;
 - `protect_last_known_valid`: opcional, default `true`;
-- `dry_run`: opcional, default `false`.
+- `dry_run`: opcional, default `true`; el borrado real requiere opt-in explícito.
+
+El housekeeping destructivo sólo se evalúa al finalizar un `backup` exitoso con artifact publicado. `precheck`, `verify-artifact`, `restore-test` y backups fallidos no disparan borrados.
 
 ## Variables de `.env`
 

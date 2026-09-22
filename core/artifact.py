@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.fs import atomic_write_json
 from core.result import ArtifactMetadata, CheckResult
 
 
@@ -30,8 +31,7 @@ def write_artifact_metadata(metadata: ArtifactMetadata) -> Path:
     metadata.path = str(artifact_path)
     metadata_path = artifact_path.with_suffix(artifact_path.suffix + '.metadata.json')
     metadata.metadata_path = str(metadata_path)
-    metadata_path.write_text(json.dumps(metadata.as_dict(), indent=2, ensure_ascii=False), encoding='utf-8')
-    return metadata_path
+    return atomic_write_json(metadata_path, metadata.as_dict(), overwrite=False)
 
 
 def _parse_metadata(raw: dict[str, Any], metadata_path: Path) -> ArtifactMetadata:

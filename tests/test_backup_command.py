@@ -24,6 +24,7 @@ class BackupCommandTests(unittest.TestCase):
         self.lock_dir = self.root / 'locks'
         self.policy_path = self.root / 'backup.policy.yml'
         self.env_path = self.root / '.env.backup'
+        self.dump_audit_path = self.root / 'dump-audit.json'
 
         mysqldump_name = 'mysqldump.bat' if os.name == 'nt' else 'mysqldump'
         mysql_name = 'mysql.bat' if os.name == 'nt' else 'mysql'
@@ -49,7 +50,13 @@ class BackupCommandTests(unittest.TestCase):
         else:
             self.mysqldump_path.write_text(
                 '#!/usr/bin/env python3\n'
-                'import sys\n'
+                'import json, os, sys\n'
+                'audit = os.environ.get("FAKE_DUMP_AUDIT")\n'
+                'defaults = [arg.split("=", 1)[1] for arg in sys.argv[1:] if arg.startswith("--defaults-extra-file=")]\n'
+                'if audit:\n'
+                '    exists = bool(defaults and os.path.isfile(defaults[0]))\n'
+                '    payload = {"argv": sys.argv[1:], "mysql_pwd_present": "MYSQL_PWD" in os.environ, "defaults_exists": exists, "defaults_mode": oct(os.stat(defaults[0]).st_mode & 0o777) if exists else None, "defaults_path": defaults[0] if defaults else None}\n'
+                '    open(audit, "w", encoding="utf-8").write(json.dumps(payload))\n'
                 'sys.stdout.write("-- sample dump\\nCREATE DATABASE IF NOT EXISTS `app`;\\n")\n',
                 encoding='utf-8',
             )
@@ -106,7 +113,10 @@ class BackupCommandTests(unittest.TestCase):
     def test_run_backup_generates_gzip_metadata_and_strict_report(self):
         args = argparse.Namespace(env=str(self.env_path), policy=str(self.policy_path))
         original_path = os.environ.get('PATH', '')
-        with patch.dict(os.environ, {'PATH': f'{self.bin_dir}{os.pathsep}{original_path}'}):
+        with patch.dict(os.environ, {
+            'PATH': f'{self.bin_dir}{os.pathsep}{original_path}',
+            'FAKE_DUMP_AUDIT': str(self.dump_audit_path),
+        }, clear=False):
             with patch('adapters.mysql.adapter.tcp_connectivity', return_value=True):
                 exit_code = run_backup(args)
 
@@ -142,6 +152,30 @@ class BackupCommandTests(unittest.TestCase):
         self.assertEqual(metadata['status'], 'OK')
         self.assertEqual(metadata['path'], str(artifact_path))
         self.assertEqual(metadata['sha256'], artifact['sha256'])
+        if os.name != 'nt':
+            self.assertEqual(stat.S_IMODE(self.output_dir.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(artifact_path.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(metadata_path.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(backup_report.stat().st_mode), 0o600)
+
+            audit = json.loads(self.dump_audit_path.read_text(encoding='utf-8'))
+            self.assertFalse(audit['mysql_pwd_present'])
+            self.assertTrue(audit['defaults_exists'])
+            self.assertEqual(audit['defaults_mode'], '0o600')
+            self.assertFalse(Path(audit['defaults_path']).exists())
+            argv = audit['argv']
+            self.assertTrue(any(arg.startswith('--defaults-extra-file=') for arg in argv))
+            for flag in [
+                '--single-transaction',
+                '--quick',
+                '--routines',
+                '--triggers',
+                '--events',
+                '--hex-blob',
+                '--no-tablespaces',
+                '--set-gtid-purged=OFF',
+            ]:
+                self.assertIn(flag, argv)
 
 
 if __name__ == '__main__':

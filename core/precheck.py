@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from core.config import deep_get
+from core.fs import FilesystemSafetyError, ensure_private_directory
 from core.lock import FileLock
 from core.result import CheckResult, RunReport
 from core.tools import resolve_tool
@@ -67,6 +68,9 @@ def validate_required_config(config: dict, report: RunReport, command: str):
 
     if command in {"verify-artifact", "restore-test"} and not (artifact_cfg.get("path") or artifact_cfg.get("metadata_path")):
         missing.append("artifact.path|artifact.metadata_path")
+    if command in {'precheck', 'backup', 'restore-test'} and resource_type == 'mysql':
+        if not config.get('env', {}).get('MYSQL_PASSWORD'):
+            missing.append('env.MYSQL_PASSWORD')
     if command == 'restore-test':
         restore_cfg = policy.get('restore_test', {})
         if not isinstance(restore_cfg.get('critical_tables', []), list):
@@ -89,12 +93,22 @@ def validate_required_config(config: dict, report: RunReport, command: str):
 def validate_output_dir(config: dict, report: RunReport):
     out_dir = Path(deep_get(config["policy"], "artifact.output_dir"))
     try:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=out_dir, delete=True) as _:
+        resolved = ensure_private_directory(out_dir)
+        with tempfile.NamedTemporaryFile(dir=resolved, delete=True) as _:
             pass
-        report.add(CheckResult("core.output_dir.writable", "OK", "blocking", f"Output dir writable: {out_dir}"))
-    except Exception as exc:
-        report.add(CheckResult("core.output_dir.writable", "ERROR", "blocking", f"Output dir not writable: {exc}"))
+        report.add(CheckResult(
+            "core.output_dir.writable",
+            "OK",
+            "blocking",
+            f"Output dir private and writable: {resolved}",
+        ))
+    except (OSError, FilesystemSafetyError) as exc:
+        report.add(CheckResult(
+            "core.output_dir.writable",
+            "ERROR",
+            "blocking",
+            f"Output dir unsafe or not writable: {exc}",
+        ))
 
 
 def validate_free_space(config: dict, report: RunReport):

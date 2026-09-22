@@ -181,7 +181,7 @@ Impacto:
 
 - el cleanup se intenta aunque falle el import o una validación posterior;
 - `cleanup_attempted` refleja el intento real;
-- `cleanup_succeeded=false` agrega evidencia de fallo;
+- `cleanup_succeeded=false` agrega un check bloqueante `ERROR` y el comando termina con error;
 - no se reutiliza una base temporal previa;
 - el nombre temporal se genera por corrida.
 
