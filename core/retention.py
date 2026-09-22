@@ -183,8 +183,8 @@ class RetentionManager:
             run.safety_issues.append('metadata project mismatch')
         if metadata.resource != run.resource:
             run.safety_issues.append('metadata resource mismatch')
-        if metadata.status != 'OK':
-            run.safety_issues.append(f'metadata status is {metadata.status}')
+        # A non-OK backup is not recoverable evidence, but its artifact can still be
+        # integrity-verified and safely considered by keep_non_success housekeeping.
         if metadata.path != str(expected_artifact.resolve()):
             run.safety_issues.append('metadata artifact path mismatch')
         if metadata.metadata_path and metadata.metadata_path != str(expected_metadata.resolve()):
@@ -199,7 +199,7 @@ class RetentionManager:
             elif sha256_file(artifact) != metadata.sha256:
                 run.safety_issues.append('artifact sha256 mismatch')
 
-        run.is_valid_backup = not run.safety_issues
+        run.is_valid_backup = not run.safety_issues and metadata.status == 'OK'
 
     def decide(self, runs: list[LogicalRun]) -> list[HousekeepingDecision]:
         decisions: list[HousekeepingDecision] = []
@@ -257,8 +257,10 @@ class RetentionManager:
 
     @staticmethod
     def _delete_safety_error(run: LogicalRun) -> str | None:
-        if not run.is_valid_backup or run.metadata is None:
-            return 'run is no longer a verified valid backup'
+        if run.metadata is None:
+            return 'metadata is missing'
+        if run.safety_issues:
+            return 'run integrity verification no longer passes'
         artifact = run.artifact_path
         metadata_path = run.metadata_path
         if artifact is None or metadata_path is None:
