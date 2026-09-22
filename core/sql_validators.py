@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 
@@ -10,6 +11,34 @@ RULES_SUPPORTED = RULES_REQUIRING_VALUE | {'zero', 'non_zero'}
 
 class ValidatorConfigError(ValueError):
     pass
+
+
+def validate_readonly_sql(sql: str, *, context: str = 'query') -> str:
+    statement = str(sql).strip()
+    if not statement:
+        raise ValidatorConfigError(f'{context} must not be empty')
+    if any(marker in statement for marker in ('--', '#', '/*', '*/')):
+        raise ValidatorConfigError(f'{context} must not contain SQL comments')
+
+    if statement.endswith(';'):
+        statement = statement[:-1].strip()
+    if ';' in statement:
+        raise ValidatorConfigError(f'{context} must contain exactly one statement')
+
+    if not re.match(r'^SELECT(?:\\s|$)', statement, flags=re.IGNORECASE):
+        raise ValidatorConfigError(f'{context} must be a read-only SELECT')
+
+    prohibited = (
+        r'\\bINTO\\s+OUTFILE\\b',
+        r'\\bINTO\\s+DUMPFILE\\b',
+        r'\\bFOR\\s+UPDATE\\b',
+        r'\\bLOCK\\s+IN\\s+SHARE\\s+MODE\\b',
+        r'\\bSLEEP\\s*\\(',
+        r'\\bBENCHMARK\\s*\\(',
+    )
+    if any(re.search(pattern, statement, flags=re.IGNORECASE) for pattern in prohibited):
+        raise ValidatorConfigError(f'{context} contains a prohibited SELECT construct')
+    return statement
 
 
 @dataclass
@@ -36,6 +65,7 @@ class SQLValidator:
             raise ValidatorConfigError(f'validator #{index} missing id')
         if not sql:
             raise ValidatorConfigError(f'validator {validator_id} missing sql')
+        sql = validate_readonly_sql(sql, context=f'validator {validator_id} sql')
         if not isinstance(expected, dict):
             raise ValidatorConfigError(f'validator {validator_id} expected must be a mapping')
 

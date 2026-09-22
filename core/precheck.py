@@ -10,7 +10,7 @@ from core.fs import FilesystemSafetyError, ensure_private_directory
 from core.lock import FileLock
 from core.result import CheckResult, RunReport
 from core.tools import resolve_tool
-from core.sql_validators import load_validators_from_policy, ValidatorConfigError
+from core.sql_validators import load_validators_from_policy, validate_readonly_sql, ValidatorConfigError
 
 
 MYSQL_RESTORE_TEST_REQUIRED_PATHS = [
@@ -77,6 +77,12 @@ def validate_required_config(config: dict, report: RunReport, command: str):
             missing.append('restore_test.critical_tables(list)')
         if restore_cfg.get('smoke_queries') is not None and not isinstance(restore_cfg.get('smoke_queries'), list):
             missing.append('restore_test.smoke_queries(list)')
+        elif isinstance(restore_cfg.get('smoke_queries'), list):
+            for index, sql in enumerate(restore_cfg.get('smoke_queries'), start=1):
+                try:
+                    validate_readonly_sql(str(sql), context=f'restore_test.smoke_queries[{index}]')
+                except ValidatorConfigError as exc:
+                    missing.append(f'restore_test.smoke_queries(valid): {exc}')
         if restore_cfg.get('validators') is not None and not isinstance(restore_cfg.get('validators'), list):
             missing.append('restore_test.validators(list)')
         elif isinstance(restore_cfg.get('validators'), list):

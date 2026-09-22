@@ -162,6 +162,12 @@ Ejemplo parcial:
 
 No se publican `status`, `checks`, `artifact` ni `restore_test` como campos top-level. Tampoco se replican `artifacts`, `validators`, `notifications` o `housekeeping` dentro de la fase.
 
+## SQL read-only
+
+Las entradas configurables de `smoke_queries` y `validators[].sql` son de solo lectura: una única sentencia `SELECT`, sin comentarios ni múltiples sentencias. BackupKit rechaza `INTO OUTFILE`, `INTO DUMPFILE`, `FOR UPDATE`, `LOCK IN SHARE MODE`, `SLEEP()` y `BENCHMARK()` antes de ejecutar el restore-test.
+
+Las sentencias `CREATE DATABASE` y `DROP DATABASE IF EXISTS` son internas, se generan únicamente con el nombre temporal validado y no son configurables por policy.
+
 ## Validators
 
 Reglas soportadas:

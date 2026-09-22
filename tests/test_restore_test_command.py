@@ -361,6 +361,40 @@ notifications:
         self.assertEqual(restore_test['validators_summary']['error'], 0)
         self.assertEqual(restore_test['validators_summary']['warn'], 0)
 
+    def test_restore_test_rejects_mutating_smoke_query(self):
+        code, report = self._run_restore('''
+            smoke_queries:
+              - DROP TABLE users;
+        ''')
+
+        self.assertEqual(code, 2)
+        self.assertEqual(report['final_status'], 'ERROR')
+        config_errors = [
+            check
+            for check in self._evidence(report)['checks']
+            if check['id'] == 'core.config.required'
+        ]
+        self.assertTrue(any('read-only SELECT' in check['message'] for check in config_errors))
+
+    def test_restore_test_rejects_mutating_validator_query(self):
+        code, report = self._run_restore('''
+            validators:
+              - id: destructive
+                sql: DELETE FROM users;
+                expected:
+                  rule: zero
+                severity: error
+        ''')
+
+        self.assertEqual(code, 2)
+        self.assertEqual(report['final_status'], 'ERROR')
+        config_errors = [
+            check
+            for check in self._evidence(report)['checks']
+            if check['id'] == 'core.config.required'
+        ]
+        self.assertTrue(any('read-only SELECT' in check['message'] for check in config_errors))
+
     def test_restore_test_rejects_invalid_validator_config(self):
         code, report = self._run_restore('''
             validators:

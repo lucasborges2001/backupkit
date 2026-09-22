@@ -200,13 +200,13 @@ core.config.unsupported=ERROR
 
 - `database_prefix`: opcional, default `bkrt`;
 - `critical_tables`: opcional, lista de tablas requeridas;
-- `smoke_queries`: opcional, lista de SQL simples;
-- `validators`: opcional, lista de validators SQL declarativos.
+- `smoke_queries`: opcional, lista de consultas `SELECT` read-only;
+- `validators`: opcional, lista de validators SQL declarativos read-only.
 
 Cada validator requiere:
 
 - `id` único;
-- `sql`;
+- `sql` como única sentencia `SELECT` read-only;
 - `expected.rule`;
 - `severity`: `error` o `warning`.
 
@@ -283,3 +283,11 @@ No requiere variables adicionales para validar un artefacto local.
 - cifrado;
 - upload externo;
 - configuración mediante nombres alternativos.
+
+
+### Seguridad SQL de restore-test
+
+`smoke_queries` y `validators[].sql` aceptan exclusivamente una sentencia `SELECT`.
+Se rechazan múltiples sentencias, comentarios SQL y construcciones con efectos laterales o bloqueo como
+`INTO OUTFILE`, `INTO DUMPFILE`, `FOR UPDATE`, `LOCK IN SHARE MODE`, `SLEEP()` y `BENCHMARK()`.
+Las sentencias internas necesarias para crear/eliminar la base temporal siguen siendo generadas por BackupKit y no provienen de la policy.
