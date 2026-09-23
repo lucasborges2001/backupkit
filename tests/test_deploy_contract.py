@@ -73,6 +73,8 @@ class DeployContractTests(unittest.TestCase):
             "adapters/mysql/adapter.py",
         }
         self.assertTrue(expected.issubset(inventory), sorted(expected - inventory))
+        self.assertFalse(any(path.startswith("lib/") for path in inventory))
+        self.assertNotIn("lib/**", manifest["include"])
 
         forbidden_prefixes = (
             ".git/",

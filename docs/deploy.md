@@ -67,6 +67,8 @@ submodules: {}
 
 El artifact no requiere `public_html`, no contiene otros submódulos y debe incluir `release-info.json` generado por el builder.
 
+La superficie runtime es única: `bin/backupkit` carga exclusivamente `core/*` y `adapters/*`. El runtime Bash histórico bajo `lib/` fue retirado para evitar una segunda implementación de backup/restore/retención con contratos divergentes.
+
 ## Inventario desplegable
 
 Familias incluidas:
@@ -77,7 +79,6 @@ back/**
 bin/**
 core/**
 adapters/**
-lib/**
 ```
 
 Rutas requeridas:
