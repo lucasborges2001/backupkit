@@ -4,6 +4,8 @@ import errno
 import os
 from pathlib import Path
 
+from core.fs import ensure_private_directory
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
@@ -25,8 +27,20 @@ class FileLock:
         self.fd: int | None = None
 
     def acquire(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+        parent = ensure_private_directory(self.path.parent)
+        self.path = parent / self.path.name
+        if self.path.is_symlink():
+            raise LockError(f'lock symlink is not allowed: {self.path}')
+
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, 'O_NOFOLLOW'):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(self.path, flags, 0o600)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise LockError(f'lock symlink is not allowed: {self.path}') from exc
+            raise
         try:
             if hasattr(os, 'fchmod'):
                 os.fchmod(fd, 0o600)

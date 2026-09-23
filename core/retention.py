@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 from dataclasses import dataclass, field
@@ -152,6 +153,8 @@ class RetentionManager:
             run.report_path = report_path
             if report_path not in run.files:
                 run.files.append(report_path)
+            if report_path.is_symlink():
+                run.safety_issues.append('report symlink')
 
         for run in runs.values():
             self._verify_run(run, output_dir)
@@ -198,6 +201,13 @@ class RetentionManager:
                 run.safety_issues.append('artifact sha256 missing')
             elif sha256_file(artifact) != metadata.sha256:
                 run.safety_issues.append('artifact sha256 mismatch')
+            try:
+                with gzip.open(artifact, 'rb') as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                        if not chunk:
+                            break
+            except Exception:
+                run.safety_issues.append('artifact gzip invalid')
 
         run.is_valid_backup = not run.safety_issues and metadata.status == 'OK'
 
@@ -256,7 +266,7 @@ class RetentionManager:
         return HousekeepingDecision(run, 'DELETE', limit_reason, files_to_delete)
 
     @staticmethod
-    def _delete_safety_error(run: LogicalRun) -> str | None:
+    def _delete_safety_error(run: LogicalRun, files_to_delete: list[Path]) -> str | None:
         if run.metadata is None:
             return 'metadata is missing'
         if run.safety_issues:
@@ -273,6 +283,18 @@ class RetentionManager:
             return 'artifact size changed before deletion'
         if sha256_file(artifact) != run.metadata.sha256:
             return 'artifact sha256 changed before deletion'
+        try:
+            with gzip.open(artifact, 'rb') as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                    if not chunk:
+                        break
+        except Exception:
+            return 'artifact gzip changed before deletion'
+        for path in files_to_delete:
+            if path.is_symlink():
+                return f'symlink detected before deletion: {path.name}'
+            if not path.is_file():
+                return f'file missing or not regular before deletion: {path.name}'
         return None
 
     def execute(self, decisions: list[HousekeepingDecision]) -> dict[str, Any]:
@@ -290,7 +312,7 @@ class RetentionManager:
                 result['skipped_deletions'].append({'timestamp': decision.run.timestamp, 'reason': f'{decision.reason} (DRY RUN)', 'files': [p.name for p in decision.files_to_delete]})
                 continue
 
-            safety_error = self._delete_safety_error(decision.run)
+            safety_error = self._delete_safety_error(decision.run, decision.files_to_delete)
             if safety_error:
                 result['failed_deletions'].append({'timestamp': decision.run.timestamp, 'failed_files': [], 'deleted_files': [], 'error': safety_error})
                 continue

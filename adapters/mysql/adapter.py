@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import shutil
 import subprocess
 import tempfile
 from contextlib import contextmanager
@@ -239,13 +240,16 @@ class MySQLAdapter:
                 return None
             report.add(CheckResult('adapter.mysql.restore.create_db', 'OK', 'blocking', f'Temporary database created: {temp_database}', {'database': temp_database}))
 
-            with gzip.open(verification.artifact_path, 'rb') as dump_stream:
+            with tempfile.TemporaryFile() as restore_input:
+                with gzip.open(verification.artifact_path, 'rb') as dump_stream:
+                    shutil.copyfileobj(dump_stream, restore_input, length=1024 * 1024)
+                restore_input.seek(0)
                 with _mysql_defaults_file(host=host, port=port, username=username, password=password) as defaults_file:
                     restore_cmd = [mysql_bin, f'--defaults-extra-file={defaults_file}', temp_database]
                     completed = subprocess.run(
                         restore_cmd,
                         env=os.environ.copy(),
-                        input=dump_stream.read(),
+                        stdin=restore_input,
                         capture_output=True,
                         timeout=max(30, timeout),
                     )

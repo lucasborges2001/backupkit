@@ -54,8 +54,8 @@ def _resolve_policy_path(value: str | Path | None, output_dir: Path) -> Path | N
         return None
     path = Path(value).expanduser()
     if path.is_absolute():
-        return path.resolve()
-    return (output_dir / path).resolve()
+        return path.absolute()
+    return (output_dir / path).absolute()
 
 
 def artifact_paths_from_config(config: dict) -> tuple[Path | None, Path | None]:
@@ -69,11 +69,14 @@ def artifact_paths_from_config(config: dict) -> tuple[Path | None, Path | None]:
     if artifact_path and not metadata_path:
         metadata_path = artifact_path.with_suffix(artifact_path.suffix + '.metadata.json')
     elif metadata_path and not artifact_path:
-        try:
-            raw = json.loads(metadata_path.read_text(encoding='utf-8'))
-            artifact_path = _resolve_policy_path(raw.get('path'), output_dir)
-        except Exception:
+        if metadata_path.is_symlink():
             artifact_path = None
+        else:
+            try:
+                raw = json.loads(metadata_path.read_text(encoding='utf-8'))
+                artifact_path = _resolve_policy_path(raw.get('path'), output_dir)
+            except Exception:
+                artifact_path = None
 
     return artifact_path, metadata_path
 
@@ -118,14 +121,16 @@ class ArtifactVerifier:
 
     @staticmethod
     def _check_artifact_presence(report, artifact_path: Path | None):
-        if artifact_path and artifact_path.exists():
+        if artifact_path and artifact_path.is_symlink():
+            report.add(CheckResult('artifact.file.exists', 'ERROR', 'blocking', f'Artifact symlink is not accepted: {artifact_path}'))
+        elif artifact_path and artifact_path.is_file():
             report.add(CheckResult('artifact.file.exists', 'OK', 'blocking', f'Artifact exists: {artifact_path}', {'path': str(artifact_path)}))
         else:
-            report.add(CheckResult('artifact.file.exists', 'ERROR', 'blocking', f'Artifact missing: {artifact_path or "not provided"}'))
+            report.add(CheckResult('artifact.file.exists', 'ERROR', 'blocking', f'Artifact missing or not a regular file: {artifact_path or "not provided"}'))
 
     @staticmethod
     def _check_artifact_nonempty(report, artifact_path: Path | None):
-        if not artifact_path or not artifact_path.exists():
+        if not artifact_path or artifact_path.is_symlink() or not artifact_path.is_file():
             return
         size_bytes = artifact_path.stat().st_size
         if size_bytes > 0:
@@ -135,7 +140,7 @@ class ArtifactVerifier:
 
     @staticmethod
     def _check_gzip_integrity(report, artifact_path: Path | None):
-        if not artifact_path or not artifact_path.exists():
+        if not artifact_path or artifact_path.is_symlink() or not artifact_path.is_file():
             return
         if artifact_path.suffix != '.gz':
             report.add(CheckResult('artifact.gzip.valid', 'WARN', 'warning', 'Artifact is not a .gz file; gzip validation skipped'))
@@ -154,8 +159,11 @@ class ArtifactVerifier:
         if metadata_path is None:
             report.add(CheckResult('artifact.metadata.present', 'ERROR', 'blocking', 'Artifact metadata path not provided and could not be inferred'))
             return None
-        if not metadata_path.exists():
-            report.add(CheckResult('artifact.metadata.present', 'ERROR', 'blocking', f'Artifact metadata missing: {metadata_path}'))
+        if metadata_path.is_symlink():
+            report.add(CheckResult('artifact.metadata.present', 'ERROR', 'blocking', f'Artifact metadata symlink is not accepted: {metadata_path}'))
+            return None
+        if not metadata_path.is_file():
+            report.add(CheckResult('artifact.metadata.present', 'ERROR', 'blocking', f'Artifact metadata missing or not a regular file: {metadata_path}'))
             return None
         try:
             raw = json.loads(metadata_path.read_text(encoding='utf-8'))
@@ -181,7 +189,7 @@ class ArtifactVerifier:
         else:
             report.add(CheckResult('artifact.sha256.present', 'ERROR', 'blocking', 'Artifact metadata sha256 missing'))
             return
-        if not artifact_path or not artifact_path.exists():
+        if not artifact_path or artifact_path.is_symlink() or not artifact_path.is_file():
             return
         actual_sha = sha256_file(artifact_path)
         if actual_sha == metadata.sha256:
@@ -201,7 +209,7 @@ class ArtifactVerifier:
             issues.append(f'metadata.path={metadata.path} differs from artifact path {artifact_path}')
         if metadata_path and metadata.metadata_path and metadata.metadata_path != str(metadata_path):
             issues.append(f'metadata.metadata_path={metadata.metadata_path} differs from metadata path {metadata_path}')
-        if artifact_path and artifact_path.exists() and metadata.size_bytes != artifact_path.stat().st_size:
+        if artifact_path and not artifact_path.is_symlink() and artifact_path.is_file() and metadata.size_bytes != artifact_path.stat().st_size:
             issues.append(f'metadata.size_bytes={metadata.size_bytes} differs from actual size {artifact_path.stat().st_size}')
         if metadata.project != expected_project:
             issues.append(f'metadata.project={metadata.project} differs from expected {expected_project}')
