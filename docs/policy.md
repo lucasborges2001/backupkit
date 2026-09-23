@@ -223,7 +223,8 @@ Reglas soportadas:
 ### `runtime`
 
 - `lock_dir`: opcional;
-- si no existe, se crea.
+- si no existe, se crea en modo privado;
+- symlinks y directorios con permisos para group/other son rechazados.
 
 ### `prechecks`
 

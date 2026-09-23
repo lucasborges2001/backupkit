@@ -183,6 +183,12 @@ Impacto:
 - `severity: error`: un fallo degrada a `ERROR`;
 - `severity: warning`: un fallo degrada a `WARN`.
 
+## Invariantes de entrada y memoria
+
+- artifact y sidecar deben ser archivos regulares; los symlinks se rechazan;
+- la descompresión se copia por chunks a un archivo temporal privado y el cliente MySQL consume ese descriptor;
+- el dump completo no se materializa en memoria.
+
 ## Invariantes de cleanup
 
 - el cleanup se intenta aunque falle el import o una validación posterior;

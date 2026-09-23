@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import stat
@@ -282,6 +283,39 @@ notifications:
         self.assertNotIn('checks', report)
         state = json.loads(self.state_path.read_text(encoding='utf-8'))
         self.assertEqual(state['databases'], {})
+
+    def test_restore_uses_bounded_reads_for_decompression(self):
+        original_open = gzip.open
+
+        class GuardedReader:
+            def __init__(self, wrapped):
+                self.wrapped = wrapped
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                self.wrapped.close()
+
+            def read(self, size=-1):
+                if size is None or size < 0:
+                    raise AssertionError('unbounded gzip read is forbidden')
+                return self.wrapped.read(size)
+
+            def __getattr__(self, name):
+                return getattr(self.wrapped, name)
+
+        def guarded_open(*args, **kwargs):
+            return GuardedReader(original_open(*args, **kwargs))
+
+        with patch('gzip.open', side_effect=guarded_open):
+            code, report = self._run_restore('''
+                smoke_queries:
+                  - SELECT 1;
+            ''')
+
+        self.assertEqual(code, 0)
+        self.assertEqual(report['final_status'], 'OK')
 
     def test_restore_cleanup_failure_is_terminal_error(self):
         with patch.dict(os.environ, {'FAKE_MYSQL_FAIL_DROP': '1'}, clear=False):

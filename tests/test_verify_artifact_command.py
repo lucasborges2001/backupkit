@@ -195,6 +195,34 @@ class VerifyArtifactCommandTests(unittest.TestCase):
         self.assertEqual(checks['artifact.sha256.match']['status'], 'ERROR')
         self.assertEqual(report['final_status'], 'ERROR')
 
+    @unittest.skipIf(os.name == 'nt', 'symlink semantics differ on Windows CI')
+    def test_verify_artifact_rejects_artifact_symlink(self):
+        artifact_path, metadata_path = self._run_backup()
+        linked = self.output_dir / 'artifact-link.sql.gz'
+        linked.symlink_to(artifact_path)
+        self._write_verify_policy(linked, metadata_path)
+
+        exit_code, report = self._run_verify()
+
+        self.assertEqual(exit_code, 2)
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
+        self.assertEqual(checks['artifact.file.exists']['status'], 'ERROR')
+        self.assertIn('symlink', checks['artifact.file.exists']['message'])
+
+    @unittest.skipIf(os.name == 'nt', 'symlink semantics differ on Windows CI')
+    def test_verify_artifact_rejects_metadata_symlink(self):
+        artifact_path, metadata_path = self._run_backup()
+        linked = self.output_dir / 'metadata-link.json'
+        linked.symlink_to(metadata_path)
+        self._write_verify_policy(artifact_path, linked)
+
+        exit_code, report = self._run_verify()
+
+        self.assertEqual(exit_code, 2)
+        checks = {c['id']: c for c in report['phases'][0]['evidence']['checks']}
+        self.assertEqual(checks['artifact.metadata.present']['status'], 'ERROR')
+        self.assertIn('symlink', checks['artifact.metadata.present']['message'])
+
     def test_verify_artifact_rejects_removed_policy_aliases(self):
         self.verify_policy_path.write_text(textwrap.dedent(f'''
             project:

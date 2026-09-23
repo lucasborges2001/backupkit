@@ -38,6 +38,24 @@ class FileLockTests(unittest.TestCase):
         lock.release()
 
     @unittest.skipIf(os.name == 'nt', 'POSIX permission contract')
+    def test_broad_lock_directory_is_rejected(self):
+        broad = Path(self.tempdir.name) / 'broad'
+        broad.mkdir()
+        broad.chmod(0o755)
+        lock = FileLock(broad / 'resource.lock')
+        with self.assertRaises(Exception):
+            lock.acquire()
+
+    @unittest.skipIf(os.name == 'nt', 'symlink semantics differ on Windows CI')
+    def test_lock_symlink_is_rejected(self):
+        actual = Path(self.tempdir.name) / 'actual.lock'
+        actual.write_text('not-a-lock', encoding='utf-8')
+        self.path.symlink_to(actual)
+        lock = FileLock(self.path)
+        with self.assertRaises(Exception):
+            lock.acquire()
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission contract')
     def test_lock_file_is_private(self):
         lock = FileLock(self.path)
         lock.acquire()

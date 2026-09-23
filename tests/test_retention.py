@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import tempfile
@@ -28,7 +29,8 @@ class RetentionTests(unittest.TestCase):
             self.resource,
             timestamp,
         )
-        artifact_path.write_bytes(f'fake content {timestamp}'.encode('utf-8'))
+        with gzip.open(artifact_path, 'wb') as handle:
+            handle.write(f'fake content {timestamp}'.encode('utf-8'))
 
         meta = ArtifactMetadata.from_values(
             path=artifact_path.resolve(),
@@ -165,6 +167,38 @@ class RetentionTests(unittest.TestCase):
 
         self.assertEqual(old.action, 'KEEP')
         self.assertIn('minimum_age_days', old.reason)
+
+    def test_corrupt_gzip_is_never_deleted(self):
+        old_artifact, _, _ = self.create_fake_run('20260401T120000Z')
+        self.create_fake_run('20260402T120000Z')
+        old_artifact.write_bytes(b'not-gzip')
+        policy = RetentionPolicy(enabled=True, keep_success=1, keep_non_success=0, protect_last_known_valid=False, dry_run=False)
+        manager = RetentionManager(policy)
+        old = {
+            decision.run.timestamp: decision
+            for decision in manager.decide(manager.discover_runs(self.output_dir, self.project, self.resource))
+        }['20260401T120000Z']
+
+        self.assertEqual(old.action, 'KEEP')
+        self.assertIn('gzip', old.reason)
+        self.assertTrue(old_artifact.exists())
+
+    @unittest.skipIf(os.name == 'nt', 'symlink semantics differ on Windows CI')
+    def test_report_symlink_blocks_entire_delete_before_unlink(self):
+        old_artifact, old_meta, old_report = self.create_fake_run('20260401T120000Z')
+        self.create_fake_run('20260402T120000Z')
+        actual_report = self.output_dir / 'actual-report.json'
+        actual_report.write_text('{}', encoding='utf-8')
+        old_report.unlink()
+        old_report.symlink_to(actual_report)
+        policy = RetentionPolicy(enabled=True, keep_success=1, keep_non_success=0, protect_last_known_valid=False, dry_run=False)
+        manager = RetentionManager(policy)
+        execution = manager.execute(manager.decide(manager.discover_runs(self.output_dir, self.project, self.resource)))
+
+        self.assertEqual(len(execution['deleted']), 0)
+        self.assertTrue(old_artifact.exists())
+        self.assertTrue(old_meta.exists())
+        self.assertTrue(old_report.is_symlink())
 
     @unittest.skipIf(os.name == 'nt', 'symlink semantics differ on Windows CI')
     def test_symlink_artifact_fails_closed(self):

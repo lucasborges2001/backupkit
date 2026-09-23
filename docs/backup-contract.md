@@ -98,6 +98,7 @@ No se publican `status`, `artifact` ni `checks` como campos top-level.
 - no deja el temporal ante error controlado;
 - el sidecar corresponde al artefacto final y se publica de forma atómica;
 - housekeeping sólo corre después de un backup exitoso y es `dry_run=true` por defecto;
+- locks y output operan sobre directorios privados y rechazan symlinks;
 - el reporte siempre respeta `report_version = 2`;
 - el código de salida deriva de `final_status`.
 
