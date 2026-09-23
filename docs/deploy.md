@@ -250,7 +250,7 @@ mv -Tf /opt/backupkit/current.next /opt/backupkit/current
 Reglas:
 
 - `.env` y policies viven fuera de la release;
-- permisos recomendados: directorio `0750`, archivos secretos `0640` o más restrictivos;
+- permisos requeridos por el runtime operativo: directorios de output/locks `0700` y archivos generados/secretos `0600` o más restrictivos;
 - usuario operativo dedicado;
 - credenciales de backup y restore-test separables;
 - ningún secreto en `release-info.json`, logs, reports o ZIP;

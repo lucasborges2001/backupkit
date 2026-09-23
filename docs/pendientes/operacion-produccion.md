@@ -132,7 +132,7 @@ Crear credenciales separadas y mínimas para backup y restore-test sin almacenar
 - no versionar `.env` ni policies reales;
 - no pasar contraseñas por argumentos del CLI;
 - no exponer secretos en SuperAdmin;
-- permisos recomendados: directorio `0750`, archivos `0640` o más restrictivos;
+- permisos requeridos para paths consumidos por el runtime: directorios de output/locks `0700` y archivos de secretos/policies/artifacts `0600` o más restrictivos;
 - el usuario del proceso solo accede a los recursos necesarios.
 
 ### Evidencia
