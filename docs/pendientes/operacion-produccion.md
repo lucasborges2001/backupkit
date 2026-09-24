@@ -6,6 +6,13 @@
 
 Este documento no bloquea el contrato de módulo, el adapter read-only ni el empaquetado standalone. Define las fases necesarias para convertir BackupKit en un servicio operativo de producción con credenciales reales, scheduler, instalación versionada, restore-test aislado, observabilidad y controles administrativos.
 
+La validación del cutover de ownership con `PlataformaCarga` es un gate previo
+y distinto de la habilitación productiva. Su estado se mantiene en
+[`plataformacarga-cutover.md`](plataformacarga-cutover.md). Un PASS descartable
+del cutover permite retirar duplicación del host, pero **no** autoriza scheduler,
+credenciales productivas, retención destructiva, deploy ni canary.
+
+
 No se considera autorizado por este documento:
 
 - ejecutar backups o restores reales;

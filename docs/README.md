@@ -17,6 +17,7 @@
 
 | Documento | Alcance |
 |---|---|
+| [`pendientes/plataformacarga-cutover.md`](pendientes/plataformacarga-cutover.md) | Validación exact-SHA del owner desde `PlataformaCarga`, paridad contra el baseline host y retiro posterior de capacidades duplicadas. |
 | [`pendientes/operacion-produccion.md`](pendientes/operacion-produccion.md) | Credenciales, MySQL real, restore-test aislado, scheduler, instalación `/opt`, SuperAdmin, canary, deploy productivo y retención real. |
 
 ## Pendientes externos
