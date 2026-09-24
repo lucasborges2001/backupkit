@@ -56,11 +56,18 @@ Este contrato evita que la presencia del bootstrap `back/` se interprete como ev
 
 ## Regla de autoridad
 
-Para una integración o deploy nuevo:
+Para cualquier consumidor, la autoridad común es:
 
 ```text
-policy.md + contrato del comando + report-format.md + deploy.md + pruebas-integration.md
+policy.md + contrato del comando + report-format.md + deploy.md
 ```
+
+La integración host es específica de cada consumidor:
+
+- `Pruebas`: [`pruebas-integration.md`](pruebas-integration.md);
+- `PlataformaCarga`: [`pendientes/plataformacarga-cutover.md`](pendientes/plataformacarga-cutover.md) mientras el cutover siga abierto, más los contratos propios de ese host.
+
+Un host consumidor no es dependencia ni autoridad runtime de otro host.
 
 Para habilitación productiva:
 

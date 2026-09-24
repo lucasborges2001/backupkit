@@ -50,7 +50,7 @@ Cerrar de forma auditable los siguientes puntos:
 cron/systemd/operador
     -> /opt/backupkit/current/bin/backupkit
 
-Pruebas/SuperAdmin
+host consumidor / UI administrativa opcional
     -> adapter read-only
     -> reportes backupkit.report.v2
     -X-> shell_exec/bin/backupkit
@@ -62,11 +62,12 @@ Pruebas/SuperAdmin
 |---|---|
 | CLI, policy, adapters, reports, validación y restore-test | `lucasborges2001/backupkit` |
 | Builder ZIP reusable y validación segura de artifact | `lucasborges2001/Base` |
-| Registro de submódulo, adapter host y SuperAdmin | `lucasborges2001/Pruebas` |
+| Registro de submódulo y adapter read-only | Cada host consumidor mediante contratos públicos; hoy `Pruebas` y `PlataformaCarga` tienen integración separada |
+| UI administrativa opcional | Host que la exponga; no pertenece al core de BackupKit |
 | Usuarios, secretos, storage, scheduler y activación | Infraestructura del servidor |
 | Contratos visuales, auth y capabilities reusables | `lucasborges2001/Base` cuando aplique |
 
-No copiar lógica del CLI en `Pruebas` ni introducir lógica MySQL o de retención en `Base`.
+No copiar lógica del CLI en ningún host consumidor ni introducir lógica MySQL o de retención en `Base`. Ningún host puede convertirse en dependencia de otro para operar BackupKit.
 
 ---
 
