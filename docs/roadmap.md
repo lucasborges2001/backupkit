@@ -16,6 +16,8 @@
 - [ ] validación MySQL descartable real desde `PlataformaCarga` sobre ese SHA
 - [ ] cutover consumidor completado y duplicación host retirada
 - [ ] baseline operativo/productivo
+- [ ] topología 3-2-1 verificada con dos dominios de fallo y una copia offsite cifrada
+- [ ] restore periódico al menos mensual ejecutado desde una copia independiente, o frecuencia más estricta según RPO/RTO
 - [ ] soporte multi-engine
 
 ## Próximo gate
@@ -38,6 +40,7 @@ del host.
 
 Detalle del cutover: [`pendientes/plataformacarga-cutover.md`](pendientes/plataformacarga-cutover.md).
 
-La habilitación productiva de scheduler, credenciales, storage, retención
-destructiva y canary sigue separada en
+La habilitación productiva de scheduler, credenciales, storage, topología
+3-2-1, copia offsite cifrada, restore periódico, retención destructiva y canary
+sigue separada en
 [`pendientes/operacion-produccion.md`](pendientes/operacion-produccion.md).
