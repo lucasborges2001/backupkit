@@ -25,16 +25,16 @@ def validate_readonly_sql(sql: str, *, context: str = 'query') -> str:
     if ';' in statement:
         raise ValidatorConfigError(f'{context} must contain exactly one statement')
 
-    if not re.match(r'^SELECT(?:\\s|$)', statement, flags=re.IGNORECASE):
+    if not re.match(r'^SELECT(?:\s|$)', statement, flags=re.IGNORECASE):
         raise ValidatorConfigError(f'{context} must be a read-only SELECT')
 
     prohibited = (
-        r'\\bINTO\\s+OUTFILE\\b',
-        r'\\bINTO\\s+DUMPFILE\\b',
-        r'\\bFOR\\s+UPDATE\\b',
-        r'\\bLOCK\\s+IN\\s+SHARE\\s+MODE\\b',
-        r'\\bSLEEP\\s*\\(',
-        r'\\bBENCHMARK\\s*\\(',
+        r'\bINTO\s+OUTFILE\b',
+        r'\bINTO\s+DUMPFILE\b',
+        r'\bFOR\s+UPDATE\b',
+        r'\bLOCK\s+IN\s+SHARE\s+MODE\b',
+        r'\bSLEEP\s*\(',
+        r'\bBENCHMARK\s*\(',
     )
     if any(re.search(pattern, statement, flags=re.IGNORECASE) for pattern in prohibited):
         raise ValidatorConfigError(f'{context} contains a prohibited SELECT construct')

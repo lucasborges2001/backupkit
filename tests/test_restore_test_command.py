@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.cli import run_backup, run_restore_test
+from core.sql_validators import ValidatorConfigError, validate_readonly_sql
 
 
 FAKE_MYSQL = r'''#!/usr/bin/env python3
@@ -428,6 +429,29 @@ notifications:
             if check['id'] == 'core.config.required'
         ]
         self.assertTrue(any('read-only SELECT' in check['message'] for check in config_errors))
+
+    def test_readonly_sql_guard_accepts_select_and_rejects_prohibited_constructs(self):
+        self.assertEqual(validate_readonly_sql('SELECT 1;'), 'SELECT 1')
+        self.assertEqual(
+            validate_readonly_sql('select count(*) from users'),
+            'select count(*) from users',
+        )
+
+        prohibited = [
+            "SELECT 1 INTO OUTFILE '/tmp/export';",
+            "SELECT 1 INTO DUMPFILE '/tmp/export';",
+            'SELECT * FROM users FOR UPDATE;',
+            'SELECT * FROM users LOCK IN SHARE MODE;',
+            'SELECT SLEEP(1);',
+            'SELECT BENCHMARK(1, SHA1(1));',
+        ]
+        for sql in prohibited:
+            with self.subTest(sql=sql):
+                with self.assertRaisesRegex(
+                    ValidatorConfigError,
+                    'prohibited SELECT construct',
+                ):
+                    validate_readonly_sql(sql)
 
     def test_restore_test_rejects_invalid_validator_config(self):
         code, report = self._run_restore('''

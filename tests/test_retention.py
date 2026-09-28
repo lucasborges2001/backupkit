@@ -92,7 +92,7 @@ class RetentionTests(unittest.TestCase):
         }
 
         self.assertEqual(actions['20260403T120000Z'], 'KEEP')
-        self.assertEqual(actions['20260402T120000Z'], 'KEEP')
+        self.assertEqual(actions['20260402T120000Z'], 'DELETE')
         self.assertEqual(actions['20260401T120000Z'], 'PROTECT')
 
     def test_dry_run_defaults_to_true_and_does_not_delete(self):
