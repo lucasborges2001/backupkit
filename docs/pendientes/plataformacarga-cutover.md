@@ -16,6 +16,9 @@ HOST_READONLY_WIRING=PASS_R34
 REMOTE_PIPELINE_R34=PASS
 REMOTE_PRODUCT_R34=FAIL_HOST_PREFLIGHT
 REMOTE_R35=NO_EJECUTADO_NO_CLAIM
+REMOTE_EXECUTOR_LAST_OBSERVED_CLAIM=R34_2026-09-28T20:42:41Z
+REMOTE_EXECUTOR_POST_R34_ACTIVITY=NOT_OBSERVED
+NEXT_REMOTE_VERIFICATION=CONFIRM_EXECUTOR_THEN_R36
 REMOTE_VALIDATION=PENDING_RETRY_AFTER_HOST_HARNESS_FIX
 DUPLICATE_REMOVAL=BLOCKED
 PRODUCTION_ENABLED=NO
@@ -81,7 +84,11 @@ pertenecía al host, no al owner. `PlataformaCarga` corrigió el harness para
 derivar y comparar gitlink=lock=checkout materializado.
 
 El request posterior r35, dirigido al estado host con ese fix, no obtuvo claim
-durante la ventana de observación y fue deshabilitado. Por tanto:
+durante la ventana de observación y fue deshabilitado. La verificación posterior
+confirmó que tampoco apareció un claim tardío. El último claim observado del
+executor `ubuntudev` continúa siendo r34. Esto deja una verificación operativa
+pendiente: confirmar/levantar el executor antes de crear r36; no corresponde
+cambiar nuevamente el owner para compensar un request no reclamado. Por tanto:
 
 ```text
 R34_OWNER_EXACT_SHA_SUITE=PASS
@@ -110,10 +117,13 @@ la evidencia ejecutada de r34, pero tampoco debe presentarse como CI PASS.
 
 ## Validaciones pendientes desde PlataformaCarga
 
-El gate consumidor debe probar el mismo SHA exacto con infraestructura
+Antes de crear el próximo request debe confirmarse disponibilidad del executor.
+Luego el gate consumidor debe probar el mismo SHA exacto con infraestructura
 descartable:
 
 ```text
+[ ] executor remoto confirmado disponible antes de r36
+[ ] claim distribuido del nuevo request
 [x] owner pin exacto — PASS r34
 [x] suite Python owner — PASS r34, 51 tests
 [x] contrato PHP owner — PASS r34
