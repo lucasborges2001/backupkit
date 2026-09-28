@@ -32,11 +32,48 @@ Cerrar de forma auditable los siguientes puntos:
 2. paths persistentes y aislamiento de secretos;
 3. backup MySQL real;
 4. restore-test real sobre infraestructura aislada;
-5. scheduler canónico;
-6. instalación versionada bajo `/opt/backupkit`;
-7. interfaz SuperAdmin read-only;
-8. acciones operativas controladas, si se justifican;
-9. deploy productivo, canary y rollback.
+5. estrategia 3-2-1 con copia externa independiente y cifrada;
+6. scheduler canónico;
+7. instalación versionada bajo `/opt/backupkit`;
+8. interfaz SuperAdmin read-only;
+9. acciones operativas controladas, si se justifican;
+10. deploy productivo, canary y rollback;
+11. recuperación periódica demostrada con evidencia.
+
+## Perfil de estabilidad objetivo
+
+Este pendiente adopta como invariantes operativas las prácticas que deben
+demostrarse antes de considerar BackupKit estable en producción. No exige
+herramientas concretas cuando existe una capacidad equivalente.
+
+| Invariante | Estado en el owner | Gate operativo |
+|---|---|---|
+| artifact MySQL real, comprimido y verificable | implementado | validar en infraestructura real |
+| integridad gzip + SHA-256 + metadata | implementado | conservar evidencia por corrida |
+| restore real sobre base temporal | implementado | ejecutar contra infraestructura aislada |
+| 3 copias incluyendo el dato primario | no garantizado por el CLI | definir y verificar topología 3-2-1 |
+| 2 medios o dominios de fallo independientes | no garantizado | documentar storage local + segundo dominio |
+| 1 copia offsite | no implementado en el core | configurar replicación/storage externo verificable |
+| cifrado de la copia externa | fuera del contrato actual | exigir cifrado en tránsito y reposo en la capa propietaria |
+| histórico/versionado | retención local implementada | validar política y, si aplica, snapshots/versionado externo |
+| deduplicación | no implementada | opcional; justificar según volumen/coste, sin convertirla en requisito del core |
+| scheduler automático | contrato documentado | habilitar un único cron o systemd timer por recurso |
+| restore periódico | comando implementado | programar y evidenciar al menos una recuperación mensual en producción, o una frecuencia más estricta según RPO/RTO |
+
+### Interpretación de herramientas
+
+- `rsync` puede ser útil para espejos de archivos, pero no es un requisito
+  arquitectónico para el pipeline de dumps MySQL de BackupKit.
+- Borg o Restic son alternativas válidas para aportar cifrado, snapshots,
+  deduplicación y repositorio remoto, pero no deben incorporarse al core sólo
+  para satisfacer un nombre de herramienta.
+- Si la infraestructura ya ofrece almacenamiento versionado, cifrado y
+  replicación offsite con aislamiento suficiente, puede cumplir el mismo
+  contrato sin Borg/Restic.
+- Un segundo directorio en el mismo filesystem o en el mismo host no cuenta
+  como segundo dominio de fallo.
+- Un artifact con SHA-256 correcto no se considera recuperable hasta que un
+  restore real haya pasado.
 
 ## Arquitectura objetivo
 
@@ -325,6 +362,94 @@ Validar además desde otro proceso que la base temporal no existe después del c
 - eliminar manualmente únicamente bases temporales verificadas;
 - rotar la credencial si hubo exposición;
 - conservar logs sanitizados.
+
+---
+
+## Fase 3B — Resiliencia 3-2-1, copia offsite y cifrado
+
+### Objetivo
+
+Evitar que el éxito de un backup local se confunda con tolerancia real a
+pérdida de host, filesystem, credenciales o sitio.
+
+### Dependencias
+
+- Fase 2 PASS;
+- al menos un artifact verificable;
+- Fase 3 PASS para demostrar que el formato es restaurable;
+- owner de infraestructura identificado;
+- RPO/RTO definidos.
+
+### Contrato mínimo
+
+La topología debe demostrar:
+
+```text
+copia 1 = dato primario
+copia 2 = backup en storage local persistente
+copia 3 = backup independiente offsite
+```
+
+Además:
+
+- las copias 2 y 3 no pueden depender del mismo único filesystem o dispositivo;
+- la copia offsite debe quedar fuera del dominio de fallo del host primario;
+- la transferencia offsite debe proteger confidencialidad e integridad;
+- la copia offsite debe estar cifrada en reposo;
+- las credenciales de escritura del origen no deberían permitir borrar
+  irrestrictamente todo el histórico remoto cuando la plataforma soporte
+  separación de privilegios, inmutabilidad o retención protegida;
+- debe existir histórico suficiente para no convertir corrupción o borrado en
+  una replicación inmediata del daño;
+- el mecanismo puede ser storage versionado, Borg, Restic, replicación de
+  objetos u otra solución equivalente;
+- `rsync --delete` por sí solo es un espejo, no un sistema 3-2-1 ni un
+  histórico recuperable.
+
+### Evidencia requerida
+
+```text
+diagrama de topología
+ubicación/dominio de fallo de cada copia
+mecanismo de cifrado en tránsito y reposo
+política de versionado/retención externa
+identidad usada para escribir y restaurar
+timestamp de última copia offsite
+integridad/hash del artifact replicado
+restore-test ejecutado desde una copia independiente
+```
+
+### Criterio PASS
+
+```text
+[ ] tres copias contabilizadas incluyendo el dato primario
+[ ] dos medios o dominios de fallo independientes
+[ ] una copia offsite verificable
+[ ] cifrado en tránsito
+[ ] cifrado en reposo
+[ ] histórico/versionado suficiente documentado
+[ ] fallo/borrado del host primario no elimina automáticamente todas las copias
+[ ] restore-test PASS usando una copia independiente
+[ ] RPO/RTO compatibles con la frecuencia observada
+```
+
+### Criterio FAIL
+
+- considerar dos paths del mismo disco como dos medios;
+- considerar el mismo host con otro directorio como offsite;
+- replicar con `--delete` sin histórico y declarar resiliencia completa;
+- almacenar la única copia remota sin cifrado;
+- permitir que una única credencial comprometida elimine todas las copias sin
+  un control compensatorio documentado;
+- declarar PASS sin restore desde la copia independiente.
+
+### Rollback
+
+- detener únicamente la replicación externa defectuosa;
+- conservar los artifacts locales existentes;
+- revocar credenciales remotas comprometidas;
+- no ejecutar borrados masivos para “sincronizar” estados;
+- volver a un modo append-only/versionado cuando el proveedor lo permita.
 
 ---
 
@@ -674,7 +799,8 @@ Habilitar housekeeping real únicamente después de caracterizar sus decisiones 
 [ ] borrado parcial recuperable
 [ ] housekeeping idempotente
 [ ] alertas por fallo
-[ ] prueba de recuperación periódica programada
+[ ] prueba de recuperación al menos mensual programada, o frecuencia más estricta según RPO/RTO
+[ ] al menos una prueba periódica ejecutada desde copia independiente con evidencia
 ```
 
 ### Rollback
@@ -693,6 +819,7 @@ F0 decisiones y ownership
   -> F1 credenciales
   -> F2 backup real
   -> F3 restore-test real
+  -> F3B 3-2-1 + offsite cifrado
   -> F4 scheduler
   -> F5 instalación versionada
   -> F8 canary/deploy productivo
@@ -713,6 +840,9 @@ No adelantar botones operativos por delante de la validación CLI, el restore-te
 [ ] verify-artifact PASS
 [ ] restore-test aislado PASS
 [ ] cleanup comprobado
+[ ] estrategia 3-2-1 verificada
+[ ] copia offsite cifrada e independiente verificada
+[ ] restore real desde copia independiente PASS
 [ ] scheduler canónico PASS
 [ ] instalación /opt versionada PASS
 [ ] canary productivo PASS
