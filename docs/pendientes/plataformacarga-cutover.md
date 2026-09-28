@@ -5,7 +5,7 @@
 ```text
 TYPE=OWNER_CONSUMER_CUTOVER_PENDING
 OWNER=lucasborges2001/backupkit
-OWNER_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
+OWNER_VALIDATED_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
 CONSUMER=lucasborges2001/PlataformaCarga
 OWNER_IMPLEMENTATION=HARDENED
 OWNER_EXACT_SHA_SUITE=PASS_R34
@@ -34,7 +34,7 @@ contratos públicos de BackupKit.
 
 ## Implementación owner ya realizada
 
-El SHA vigente incorpora, entre otros invariantes:
+El implementation SHA validado `8d497912fc601f2d4bf8a4ce53b779dc13990b4f` incorpora, entre otros invariantes:
 
 - publicación atómica y no-overwrite de artifacts/sidecars/reportes;
 - directorios privados y archivos generados privados;
@@ -95,11 +95,10 @@ R35_PRODUCT_VALIDATION=NO_EJECUTADA
 
 ## Validación exacta del owner
 
-El SHA actual ya tiene evidencia ejecutada proporcional desde el gate remoto del
-consumidor:
+El implementation SHA fijado por el consumidor ya tiene evidencia ejecutada proporcional desde el gate remoto. Commits documentales posteriores del owner no se consideran validados por herencia:
 
 ```text
-OWNER_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
+OWNER_VALIDATED_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
 python3 -m compileall -q core adapters tests=PASS
 python3 -m unittest discover -s tests -p 'test_*.py' -v=PASS_51_TESTS
 php tests/test_php_contract.php=PASS

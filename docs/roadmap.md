@@ -22,10 +22,10 @@
 
 ## Próximo gate
 
-El owner vigente es:
+El implementation SHA validado y consumido por el host es:
 
 ```text
-BACKUPKIT_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
+VALIDATED_OWNER_SHA=8d497912fc601f2d4bf8a4ce53b779dc13990b4f
 OWNER_IMPLEMENTATION=HARDENED
 OWNER_EXACT_SHA_VALIDATION=PASS_R34
 OWNER_PYTHON_SUITE=PASS_51_TESTS
@@ -34,7 +34,7 @@ PLATAFORMACARGA_CUTOVER_VALIDATION=PENDING_REMOTE_RETRY_AFTER_HOST_HARNESS_FIX
 PRODUCTION_OPERATION=PENDING
 ```
 
-El owner exacto ya quedó certificado por el request r34 de `PlataformaCarga`.
+El implementation SHA exacto `8d497912...` quedó certificado por el request r34 de `PlataformaCarga`. Commits documentales posteriores en `main` no heredan automáticamente esa certificación.
 El próximo gate no es agregar más lógica de backup al owner: debe reejecutarse
 `backupkit_cutover` después del fix del harness host y alcanzar la recuperación
 MySQL descartable real. Sólo después de `PIPELINE=PASS` y `PRODUCT=PASS`
