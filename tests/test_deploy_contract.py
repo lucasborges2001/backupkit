@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import stat
 import unittest
 from pathlib import Path
 
@@ -109,6 +110,12 @@ class DeployContractTests(unittest.TestCase):
         self.assertIn("core/backup.py", inventory)
         self.assertFalse(any(path.startswith("public_html/") for path in inventory))
         self.assertFalse(any(path.endswith((".sql", ".sql.gz", ".dump", ".bak")) for path in inventory))
+
+    def test_cli_entrypoint_is_executable(self):
+        cli = ROOT / "bin" / "backupkit"
+        mode = stat.S_IMODE(cli.stat().st_mode)
+
+        self.assertTrue(mode & 0o111, f"bin/backupkit must be executable, mode={mode:o}")
 
     def test_runtime_configuration_is_not_packaged(self):
         manifest = load_json(SERVER_MANIFEST)
