@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-import shutil
 import stat
 import tarfile
 import tempfile
@@ -58,10 +57,12 @@ def _make_archive(source: Path, target: Path, inventory: list[tuple[Path, str]])
             member.size = before.st_size
             member.mode = 0o600
             member.uid = member.gid = member.mtime = 0
-            with path.open("rb") as stream:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, "rb") as stream:
                 after_open = os.fstat(stream.fileno())
-                if (before.st_ino, before.st_dev, before.st_size, before.st_mtime_ns) != (
-                        after_open.st_ino, after_open.st_dev, after_open.st_size, after_open.st_mtime_ns):
+                if (not stat.S_ISREG(after_open.st_mode) or after_open.st_nlink != 1
+                        or (before.st_ino, before.st_dev, before.st_size, before.st_mtime_ns) !=
+                        (after_open.st_ino, after_open.st_dev, after_open.st_size, after_open.st_mtime_ns)):
                     raise FilesystemError("source changed during backup")
                 archive.addfile(member, stream)
             after = path.lstat()
@@ -75,6 +76,7 @@ def _safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
     if not members or len(members) > 100000:
         raise FilesystemError("archive inventory invalid")
     seen: set[str] = set()
+    total_size = 0
     files = []
     for member in members:
         name = member.name
@@ -83,6 +85,9 @@ def _safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
                 or any(x in ("", ".", "..") for x in parts) or "\\" in name
                 or "\x00" in name or name in seen or member.size < 0):
             raise FilesystemError("archive unsafe member")
+        total_size += member.size
+        if member.size > 4 * 1024 ** 3 or total_size > 64 * 1024 ** 3:
+            raise FilesystemError("archive size limit exceeded")
         seen.add(name)
         files.append(member)
     return files
