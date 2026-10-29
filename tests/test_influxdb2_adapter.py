@@ -63,7 +63,7 @@ class InfluxBackupContract(unittest.TestCase):
         self.assertEqual(self.command(run_restore_test), 2)
         report = json.loads((self.output / "restore-test-report.json").read_text())
         self.assertEqual(report["final_status"], "ERROR")
-        self.assertIn("isolated InfluxDB", report["final_summary"] if False else
+        self.assertIn("isolated InfluxDB",
                       str(report["phases"][0]["evidence"]["checks"]))
         self.assertEqual(len(self.calls), 1)
         self.assertNotIn(TOKEN, json.dumps(report))
