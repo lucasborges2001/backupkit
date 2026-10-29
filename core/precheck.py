@@ -75,7 +75,7 @@ def validate_required_config(config: dict, report: RunReport, command: str):
     if command in {'precheck', 'backup', 'restore-test'} and resource_type == 'mysql':
         if not config.get('env', {}).get('MYSQL_PASSWORD'):
             missing.append('env.MYSQL_PASSWORD')
-    if command == 'restore-test':
+    if command == 'restore-test' and resource_type == 'mysql':
         restore_cfg = policy.get('restore_test', {})
         if not isinstance(restore_cfg.get('critical_tables', []), list):
             missing.append('restore_test.critical_tables(list)')
