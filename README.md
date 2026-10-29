@@ -2,6 +2,17 @@
 
 `backupkit` es un CLI operativo para ejecutar prechecks, backups MySQL reales, verificación técnica de artefactos y restore tests sobre bases temporales.
 
+## Nuevos adapters de preparación F4-C
+
+Junto al adapter MySQL histórico, el core registra dos recursos adicionales:
+
+- `filesystem`: backup de archivos regulares a TAR/gzip, SHA-256, verify-artifact y restore-test a una ruta temporal desechable. Se requiere fuente quiescente o snapshot proporcionado externamente.
+- `influxdb2`: captura mediante CLI nativo `influx backup`, sin tokens en argv, TAR/gzip y verificación del artefacto. **Restore-test siempre devuelve ERROR** hasta que exista un sandbox InfluxDB 2 probado; no hace `influx restore`.
+
+Ambos mantienen `report_version=2`, sidecar, locks y salida privada. La retención automatizada se **rechaza** para los nuevos adapters: el housekeeping actual entiende únicamente artifacts MySQL `.sql.gz`.
+
+Contratos: [filesystem](docs/filesystem-adapter.md) e [InfluxDB 2](docs/influxdb2-adapter.md). Los cambios no significan backups o restores ejecutados en producción. El tooling no debe invocarse desde HTTP.
+
 ## Capacidades actuales
 
 - CLI:
