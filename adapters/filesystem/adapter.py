@@ -10,7 +10,7 @@ import tempfile
 from datetime import datetime, timezone
 
 from core.artifact import ArtifactVerifier
-from core.backup import build_artifact_metadata, utc_timestamp_slug, write_artifact_metadata
+from core.backup import build_artifact_metadata, build_backup_basename, utc_timestamp_slug, write_artifact_metadata
 from core.config import deep_get
 from core.fs import publish_new_file
 from core.result import CheckResult
@@ -165,7 +165,8 @@ class FilesystemAdapter:
             return None
         source = Path(deep_get(config["policy"], "resource.source_dir"))
         output = Path(deep_get(config["policy"], "artifact.output_dir"))
-        target = output / (f"{report.project}__{report.resource}__{utc_timestamp_slug()}.tar.gz")
+        target = output / build_backup_basename(
+            report.project, report.resource, utc_timestamp_slug()).replace(".sql.gz", ".tar.gz")
         temporary: Path | None = None
         published = False
         try:
