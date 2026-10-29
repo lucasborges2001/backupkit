@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -94,8 +95,8 @@ class FilesystemAdapterContract(unittest.TestCase):
         meta = build_artifact_metadata(
             artifact_path=payload, engine="filesystem",
             resource="ingest-state", project="centrologistico",
-            started_at=RunReport("centrologistico", "ingest-state", "backup").started_at,
-            finished_at=RunReport("centrologistico", "ingest-state", "backup").started_at,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
             status="OK",
         )
         write_artifact_metadata(meta)
