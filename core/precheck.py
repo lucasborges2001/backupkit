@@ -44,6 +44,8 @@ def required_paths_for_resource(resource_type: str, command: str):
         base += MYSQL_RESTORE_TEST_REQUIRED_PATHS
     if command in {"precheck", "backup"} and resource_type == "filesystem":
         base.append("resource.source_dir")
+    if command in {"precheck", "backup"} and resource_type == "influxdb2":
+        base += ["resource.connection.host", "resource.connection.org"]
     return base
 
 
@@ -92,13 +94,13 @@ def validate_required_config(config: dict, report: RunReport, command: str):
                 load_validators_from_policy(restore_cfg.get('validators'))
             except ValidatorConfigError as exc:
                 missing.append(f'restore_test.validators(valid): {exc}')
-    if resource_type == "filesystem":
+    if resource_type in {"filesystem", "influxdb2"}:
         if deep_get(policy, "retention.enabled", False):
             missing.append("retention.enabled(false_for_filesystem)")
         if command == "restore-test":
             rules = policy.get("restore_test", {}) or {}
             if (not isinstance(rules, dict) or any(value not in (None, [], "", {}) for value in rules.values())):
-                missing.append("restore_test(mysql_options_not_supported_for_filesystem)")
+                missing.append("restore_test(options_not_supported_for_this_adapter)")
     if missing:
         report.add(CheckResult("core.config.required", "ERROR", "blocking", f"Missing required policy fields: {', '.join(missing)}"))
     else:
